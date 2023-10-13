@@ -5,7 +5,7 @@ from copy import deepcopy
 import datetime
 
 atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
-K = 10000
+K = 10000; allowed_error = 1e-8 # number of steps and allowed error
 
 class IdealGas:
     def __init__(self,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,Cv=None,specific_heat=None,molar_mass=None,atomic_mass=None,diameter=1e-10,dummy=False):
@@ -120,11 +120,13 @@ class IdealGas:
         return 4/np.sqrt(np.pi)*(self.atomic_mass/(k*T))**(3/2)*v**2*np.exp(-self.atomic_mass*v**2/(2*k*T))
     
     def calculate_work_done_by(self):
-        self.work_done_by = self.P1*(self.volume-self.V1)
+        self.work_done_by = self.P1*(self.volume[-1]-self.V1)
+        self.work_done_on = -self.work_done_by
         return self.work_done_by
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*(self.Cv+1)*R*(self.temperature-self.T1)
+        self.heat_absorbed = self.n*(self.Cv+1)*R*(self.temperature[-1]-self.T1)
+        self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
 
     def _show_picture(self,save=False,name=None,xlabel=None,ylabel=None,type=""):
@@ -200,8 +202,14 @@ class Isothermal(IdealGas):
         self.title = "Isotermisk prosess"
         self._find_missing()
 
+    def calculate_work_done_by(self):
+        self.work_done_by = R*self.n*np.log(self.volume[-1]/self.V1)
+        self.work_done_on = -self.work_done_by
+        return self.work_done_by
+
     def calculate_heat_absorbed(self):
         self.heat_absorbed = self.calculate_work_done_by()
+        self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
 
     def generate_data_from_dV(self,V2,show=False,steps=K):
@@ -236,6 +244,11 @@ class Isobaric(IdealGas):
         self.pressure = self.P1*np.ones(len(self.temperature))
         self._generate_extra_data(show)
         return self.volume,self.pressure
+    
+    def calculate_heat_absorbed(self):
+        self.heat_absorbed = self.n*self.Cp*R*(self.temperature[-1]-self.T1)
+        self.heat_released = -self.heat_absorbed
+        return self.heat_absorbed
 class Isochoric(IdealGas):
     def __init__(self,n=None,V1=None,T1=None,P1=None,monatomic=False,diatomic=False):
         super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
@@ -259,6 +272,16 @@ class Isochoric(IdealGas):
         self.volume = self.V1*np.ones(len(self.pressure))
         self._generate_extra_data(show)
         return self.volume,self.pressure
+    
+    def calculate_heat_absorbed(self):
+        self.heat_absorbed = self.n*self.Cv*R*(self.temperature[-1]-self.T1)
+        self.heat_released = -self.heat_absorbed
+        return self.heat_absorbed
+    
+    def calculate_work_done_by(self):
+        self.work_done_by = 0
+        self.work_done_on = 0
+        return self.work_done_by
 class Adiabatic(IdealGas):
     def __init__(self,gamma=None,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False):
         super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
@@ -292,8 +315,14 @@ class Adiabatic(IdealGas):
         return self.V1*(self.T1/T2)**(1/(self.gamma-1))
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = np.zeros(len(self.volume))
+        self.heat_absorbed = 0
+        self.heat_released = 0
         return self.heat_absorbed
+    
+    def calculate_work_done_by(self):
+        self.work_done_by = 3/2 * self.n * self.Cv * R * (self.temperature[-1]-self.T1)
+        self.work_done_on = -self.work_done_by
+        return self.work_done_by
     
     def generate_data_from_dV(self,V2,show=False, steps = K):
         self.volume = np.linspace(self.V1,V2,steps)
@@ -337,7 +366,7 @@ class BaseCycle:
         self.entropy = None
 
         self.efficiency = None
-        
+
         self.work_done_by = 0
         self.work_done_on = 0
         self.heat_absorbed = 0
@@ -374,31 +403,28 @@ class BaseCycle:
         self.alpha = 1
         self.beta  = 1
 
-    def run_custom_cycle(self):
-        pass
-
     def _calculate_work_in_cycle(self):
         for process in self.processes:
-            work = process.calculate_work_done_by()[-1]
+            work = process.calculate_work_done_by()
             self.work_done_by += work
             self.work_done_on -= work
 
     def _calculate_heat_in_cycle(self):
         for process in self.processes:
             # we only want to add heat absorbed, meaning positive values
-            heat_absorbed = process.calculate_heat_absorbed()[-1]
+            heat_absorbed = process.calculate_heat_absorbed()
             if heat_absorbed > 0:
                 self.heat_absorbed += heat_absorbed
             elif heat_absorbed <= 0:
-                self.heat_released += heat_absorbed
+                self.heat_released -= heat_absorbed
     
     def _calculate_carnot_efficiency(self):
         self.theoretical_efficiency = 1-self.T_cold/self.T_hot
 
     def _calculate_efficiency(self):
         assert self.heat_absorbed != 0, "Heat absorbed must be calculated before efficiency"
-        eff_from_work = self.work_done_by/self.heat_absorbed
-        eff_from_heat = 1-self.heat_released/self.heat_absorbed
+        eff_from_work = abs(self.work_done_by/self.heat_absorbed)
+        eff_from_heat = 1-abs(self.heat_released/self.heat_absorbed)
         assert abs(eff_from_work-eff_from_heat) < 1e-6, f"Something went wrong, eff_from_work = {eff_from_work}, eff_from_heat = {eff_from_heat}"
         self.efficiency = np.mean([eff_from_work,eff_from_heat])
 
@@ -428,27 +454,37 @@ class BaseCycle:
             plt.savefig(f"{self.title}_{type}_{now.strftime('%Y_%m_%d')}.png",dpi=1024)
         plt.show()
 
+    def process_label(self,process):
+        title = process.title.split(" ")[0]
+        if title != "Adiabatisk": title = title[:-3]
+        if process.volume[-1] > process.volume[0]:
+            return f"{title} ekspansjon"
+        elif isinstance(process,Isochoric):
+            return f"Isokor process"
+        else:
+            return f"{title} kompresjon"
+
     def plot_PV(self,save=False,name=None):
         for process in self.processes:
-            plt.plot(process.volume,process.pressure,label=process.title)
+            plt.plot(process.volume,process.pressure,label=self.process_label(process))
             plt.scatter(process.volume[0],process.pressure[0])
         self._show_plt(save,name,"Volum [m^3]", "Trykk [Pa]", "Pressure-Volume")
 
     def plot_PT(self,save=False,name=None):
         for process in self.processes:
-            plt.plot(process.temperature,process.pressure,label=process.title)
+            plt.plot(process.temperature,process.pressure,label=self.process_label(process))
             plt.scatter(process.temperature[0],process.pressure[0])
         self._show_plt(save,name,"Temperatur [K]", "Trykk [Pa]", "Pressure-Temperature")
 
     def plot_VT(self,save=False,name=None):
         for process in self.processes:
-            plt.plot(process.temperature,process.volume,label=process.title)
+            plt.plot(process.temperature,process.volume,label=self.process_label(process))
             plt.scatter(process.temperature[0],process.volume[0])
         self._show_plt(save,name,"Temperatur [K]", "Volum [m^3]", "Volume-Temperature")
 
     def plot_ST(self,save=False,name=None):
         for process in self.processes:
-            plt.plot(process.temperature,process.entropy,label=process.title)
+            plt.plot(process.temperature,process.entropy,label=self.process_label(process))
             plt.scatter(process.temperature[0],process.entropy[0])
         self._show_plt(save,name,"Temperatur [K]", "Entropi [J/K]", "Entropy-Temperature")
     
@@ -456,7 +492,7 @@ class BaseCycle:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         for process in self.processes:
-            ax.plot(process.volume,process.pressure,process.temperature,label=process.title)
+            ax.plot(process.volume,process.pressure,process.temperature,label=self.process_label(process))
             ax.scatter(process.volume[0],process.pressure[0],process.temperature[0])
         ax.set_xlabel("Volum [m^3]")
         ax.set_ylabel("Trykk [Pa]")
@@ -468,10 +504,6 @@ class BaseCycle:
         self._calculate_work_in_cycle()
         self._calculate_heat_in_cycle()
         #self._calculate_efficiency()
-
-            
-
-
 class Carnot(BaseCycle):
     def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
         super().__init__(P1=P1,V1=V1,n=n,
@@ -485,6 +517,7 @@ class Carnot(BaseCycle):
         self.title = "Carnot syklus"
         self._find_missing()
         self._calculate_alpha_beta()
+        self.run_cycle()
 
     def _calculate_alpha_beta(self):
         self.alpha = self.compression_ratio * (self.T_cold/self.T_hot)**(1/(self.gamma-1))
@@ -492,11 +525,10 @@ class Carnot(BaseCycle):
 
         self.beta  = 1 / self.compression_ratio * (self.T_hot/self.T_cold)**(1/(self.gamma-1))
         assert self.beta * self.compression_ratio > 1, f"Compression ratio is too high"
-        # self.alpha = 1 / self.compression_ratio * (self.T_hot/self.T_cold)**(self.gamma/(1-self.gamma))
-        # self.beta  = self.compression_ratio*(self.T_hot/self.T_cold)**(self.gamma/(self.gamma-1))
 
     def generate_processes(self):
-
+        self.processes = []
+        
         isothermal_expansion = Isothermal(n=self.n,
                                           V1=self.V1,
                                           T1=self.T_hot,
@@ -529,11 +561,23 @@ class Carnot(BaseCycle):
         adiabatic_compression.generate_data_from_dT(self.T_hot)
         self.processes.append(adiabatic_compression)
 
-        assert abs(adiabatic_compression.volume[-1]-self.V1) < 1e-6, f"Something went wrong, V4 = {adiabatic_compression.volume[-1]}, V = {self.V}, alpha = {self.alpha}"
-
-
-
+        assert abs(adiabatic_compression.volume[-1]-self.V1) < allowed_error, f"Something went wrong, V4 = {adiabatic_compression.volume[-1]}, V = {self.V1}, alpha = {self.alpha}"
+        assert abs(adiabatic_compression.temperature[-1]-self.T_hot) < allowed_error, f"Something went wrong, T4 = {adiabatic_compression.temperature[-1]}, T = {self.T}, alpha = {self.alpha}"
+        assert abs(adiabatic_compression.pressure[-1]-self.P1) < allowed_error, f"Something went wrong, P4 = {adiabatic_compression.pressure[-1]}, P = {self.P1}, alpha = {self.alpha}"
+        return self.processes
+class Petrol(BaseCycle):
+    pass
+class Diesel(BaseCycle):
+    pass
 class Otto(BaseCycle): 
     pass
-
-
+class Brayton(BaseCycle):
+    pass
+class Stirling(BaseCycle):
+    pass
+class Ericsson(BaseCycle):
+    pass
+class Rankine(BaseCycle):
+    pass
+class Kalina(BaseCycle):
+    pass
