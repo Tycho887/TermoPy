@@ -27,15 +27,19 @@ class IdealGas:
 
         if monatomic:
             self.Cv = 3/2
+            self.Cp = 5/2
             self.gamma = 5/3
         elif diatomic:
             self.Cv = 5/2
+            self.Cp = 7/2
             self.gamma = 7/5
         elif Cv != None:
             self.Cv = Cv
+            self.Cp = Cv+1
             self.gamma = Cv+1
         else:
             self.Cv = 3/2
+            self.Cp = 5/2
             self.gamma = 5/3
         
         self.specific_heat = specific_heat
