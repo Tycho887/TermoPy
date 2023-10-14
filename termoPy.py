@@ -425,10 +425,16 @@ class BaseCycle:
 
     def _calculate_efficiency(self):
         assert self.heat_absorbed != 0, "Heat absorbed must be calculated before efficiency"
-        eff_from_work = abs(self.work_done_by/self.heat_absorbed)
-        eff_from_heat = 1-abs(self.heat_released/self.heat_absorbed)
-        assert abs(eff_from_work-eff_from_heat) < 1e-6, f"Something went wrong, eff_from_work = {eff_from_work}, eff_from_heat = {eff_from_heat}"
-        self.efficiency = np.mean([eff_from_work,eff_from_heat])
+        # we want to sum only the positive values
+        Q_in = sum([Q for Q in self.heat_absorbed if Q > 0])
+        Q_out = sum([Q for Q in self.heat_absorbed if Q < 0])
+        work_done = np.sum(self.work_done_by)
+        efficiency_from_heat = 1 - abs(Q_out/Q_in)
+        efficiency_from_work = abs(work_done/Q_in)
+        assert abs(efficiency_from_heat-efficiency_from_work) < allowed_error, f"Efficiency from heat: {efficiency_from_heat:.2f}, efficiency from work: {efficiency_from_work:.2f}"
+        self.efficiency = np.mean([efficiency_from_heat,efficiency_from_work])
+
+
 
     def _find_missing(self):
         assert self.P1 != None or self.V1 != None or self.n != None or self.T != None, "Tre av P,V,n eller T må være definert"
@@ -505,7 +511,7 @@ class BaseCycle:
         self.generate_processes()
         self._calculate_work_in_cycle()
         self._calculate_heat_in_cycle()
-        #self._calculate_efficiency()
+        self._calculate_efficiency()
 class Carnot(BaseCycle):
     def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
         super().__init__(P1=P1,V1=V1,n=n,
@@ -517,6 +523,7 @@ class Carnot(BaseCycle):
                          diameter=diameter)
         
         self.title = "Carnot syklus"
+        theoretical_efficiency = 1-T_cold/T_hot
         self._find_missing()
         self._calculate_alpha_beta()
         self.run_cycle()
