@@ -589,12 +589,47 @@ class Carnot(BaseCycle):
         assert abs(adiabatic_compression.temperature[-1]-self.T_hot) < allowed_error, f"Something went wrong, T4 = {adiabatic_compression.temperature[-1]}, T = {self.T}, alpha = {self.alpha}"
         assert abs(adiabatic_compression.pressure[-1]-self.P1) < allowed_error, f"Something went wrong, P4 = {adiabatic_compression.pressure[-1]}, P = {self.P1}, alpha = {self.alpha}"
         return self.processes
-class Petrol(BaseCycle):
-    pass
-class Diesel(BaseCycle):
-    pass
 class Otto(BaseCycle): 
-    pass
+    def __init__(self,compression_ratio,T_cold,T_hot,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
+        super().__init__(P1=P1,V1=V1,n=n,
+                         compression_ratio=compression_ratio,
+                         T_hot=T_hot,T_cold=T_cold,
+                         monatomic=monatomic,diatomic=diatomic,
+                         specific_heat=specific_heat,
+                         molar_mass=molar_mass,
+                         diameter=diameter)
+        
+        self.title = "Otto syklus"
+        self._find_missing()
+        self._calculate_alpha_beta()
+        self.run_cycle()
+
+    def _calculate_alpha_beta(self):
+        self.alpha = 1/self.compression_ratio
+        self.beta  = self.compression_ratio
+
+    def generate_processes(self):
+        self.processes = []
+
+        adiabatic_compression = Adiabatic(n=self.n,T1=self.T_cold,V1=self.V1,diatomic=self.diatomic)
+        adiabatic_compression.generate_data_from_dV(self.alpha*self.V1)
+        self.processes.append(adiabatic_compression)
+
+        isochoric_heat_addition = Isochoric(n=self.n,T1=self.T_cold,V1=adiabatic_compression.volume[-1],diatomic=self.diatomic)
+        isochoric_heat_addition.generate_data_from_dT(self.T_hot)
+        self.processes.append(isochoric_heat_addition)
+
+        adiabatic_expansion = Adiabatic(n=self.n,T1=self.T_hot,V1=isochoric_heat_addition.volume[-1],diatomic=self.diatomic)
+        adiabatic_expansion.generate_data_from_dV(self.beta*isochoric_heat_addition.volume[-1])
+        self.processes.append(adiabatic_expansion)
+
+        isochoric_heat_rejection = Isochoric(n=self.n,T1=self.T_hot,V1=adiabatic_expansion.volume[-1],diatomic=self.diatomic)
+        isochoric_heat_rejection.generate_data_from_dT(self.T_cold)
+        self.processes.append(isochoric_heat_rejection)
+
+        return self.processes
+
+
 class Brayton(BaseCycle):
     pass
 class Stirling(BaseCycle):

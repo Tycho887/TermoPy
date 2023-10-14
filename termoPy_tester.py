@@ -5,87 +5,10 @@ import numpy as np
 atm = 101325
 num_tests = 500; show_test = False
 allowed_error = 1e-4
-
-
-
-class TestProcess:
-    def __init__(self,num_tests):
-        self.num_tests = num_tests
-
-    def __test_ideal_gas(self,process,type):
-        assert (np.mean(process.consistency)) < allowed_error, f"Process does not satisfy the ideal gas law, inconsistency: {np.mean(process.consistency)}"
-        return np.mean(process.consistency)
-
-    def __test_first_law(self,process,type):
-        # we want to check that the values are in accordance with the first law of thermodynamics
-        # d
-        W_on = process.work_done_on
-        Q_in = process.heat_absorbed
-        W_by = process.work_done_by
-        Q_out = process.heat_released
-
-        dE = process.internal_energy[-1] - process.internal_energy[0]
-
-        error_1 = np.abs(W_on + Q_in - dE)
-        error_2 = np.abs(W_by + Q_out + dE)
-
-        assert error_1 < allowed_error and error_2 < allowed_error, f"The first law of thermodynamics is not satisfied for {process.title}, {type}, error_1: {error_1}, error_2: {error_2}"
-
-        return np.mean([error_1,error_2])
-    
-    def _test_methods(self,process):
-        ideal_gas_errors = []; first_law_errors = []
-        for type in ["+dV","-dV","+dP","-dP","+dT","-dT"]:
-            op = "*"
-            if "+" in type: op = "*"
-            elif "-" in type: op = "/"
-            method = f"generate_data_from_d{type[2]}(process.{type[2]}1{op}10)"
-            try:
-                eval(f"process.{method}")
-                ideal_gas_error = self.__test_ideal_gas(process,type)
-                first_law_error = self.__test_first_law(process,type)
-            except AttributeError: print(f"\tThe {type} method does not exist")
-        return True, ideal_gas_error, first_law_error
-
-    def base_test(self,process_generator):
-        ideal_gas_errors = []; first_law_errors = []; name = ""
-        for i in range(self.num_tests):
-            P = np.random.uniform(0.01*tp.atm,100*tp.atm)
-            V = np.random.uniform(1e-4,10)
-            T = np.random.uniform(10,1000)
-            process = process_generator(P,V,T)
-            name = process.title
-            passed, ideal_gas_error, first_law_error = self._test_methods(process)
-            if passed:
-                first_law_errors.append(first_law_error)
-                ideal_gas_errors.append(ideal_gas_error)
-        print(f"""\n{name} PASSED
-\tAverage error in ideal gas law: {np.mean(ideal_gas_errors):<4.3e}
-\tAverage error in first law of thermodynamics: {np.mean(first_law_errors):<4.3e}""")
-
-    def isothermal(self):
-        isothermal_generator = lambda P,V,T: tp.Isothermal(P1=P,V1=V,T1=T,monatomic=True)
-        self.base_test(isothermal_generator)
-
-    def isochoric(self):
-        isochoric_generator = lambda P,V,T: tp.Isochoric(P1=P,V1=V,T1=T,monatomic=True)
-        self.base_test(isochoric_generator)
-
-    def isobaric(self):
-        isobaric_generator = lambda P,V,T: tp.Isobaric(P1=P,V1=V,T1=T,monatomic=True)
-        self.base_test(isobaric_generator)
-
-    def adiabatic(self):
-        adiabatic_generator = lambda P,V,T: tp.Adiabatic(P1=P,V1=V,T1=T,monatomic=True)
-        self.base_test(adiabatic_generator)
-
-# we want to rewrite the test as a unittest
-
-
 class Test_TermoPy_processes(unittest.TestCase):
     
     def test_Isothermal(self):
-        print("\nRunning isothermal process test")
+        print("\nRunning isothermal process test\n")
         for i in range(num_tests):
             P = np.random.uniform(0.01*tp.atm,100*tp.atm)
             V = np.random.uniform(1e-4,10)
@@ -109,9 +32,11 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(np.abs(process.temperature[0] - process.temperature[-1]) < allowed_error)
 
             if show_test: print(f"Test {i} passed")
+        print("\tPASSED")
+
 
     def test_Isochoric(self):
-        print("\nRunning isochoric process test")
+        print("\nRunning isochoric process test\n")
         for i in range(num_tests):
             P = np.random.uniform(0.01*tp.atm,100*tp.atm)
             V = np.random.uniform(1e-4,10)
@@ -136,9 +61,10 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(np.abs(process.volume[0] - process.volume[-1]) < allowed_error)
 
             if show_test: print(f"Test {i} passed")
+        print("\tPASSED")
 
     def test_Isobaric(self):
-        print("\nIsobaric process test")
+        print("\nIsobaric process test\n")
         for i in range(num_tests):
             P = np.random.uniform(0.01*tp.atm,100*tp.atm)
             V = np.random.uniform(1e-4,10)
@@ -162,9 +88,10 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(np.abs(process.pressure[0] - process.pressure[-1]) < allowed_error)
 
             if show_test: print(f"Test {i} passed")
-            
+        print("\tPASSED")
+
     def test_Adiabatic(self):
-        print("\nRunning adiabatic process test")
+        print("\nRunning adiabatic process test\n")
         for i in range(num_tests):
             P = np.random.uniform(0.01*tp.atm,100*tp.atm)
             V = np.random.uniform(1e-4,10)
@@ -190,9 +117,10 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(process.is_first_law_satisfied())
 
             if show_test: print(f"Test {i} passed")
+        print("\tPASSED")
 
     def test_carnot(self):
-        print("\nRunning Carnot cycle test")
+        print("\nRunning Carnot cycle test\n")
         for i in range(num_tests):
             P = np.random.uniform(0.01*tp.atm,100*tp.atm)
             V = np.random.uniform(1e-4,10)
@@ -224,13 +152,9 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(np.abs(Carnot_cycle.efficiency - Carnot_cycle.theoretical_efficiency) < allowed_error)
 
             if show_test: print(f"Test {i} passed")
+        print("\tPASSED")
     
 
 if __name__ == "__main__":
-    # test = TestProcess(100)
-    # test.isothermal()
-    # test.isochoric()
-    # test.isobaric()
-    # test.adiabatic()
     unittest.main()
 
