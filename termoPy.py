@@ -5,7 +5,7 @@ from copy import deepcopy
 import datetime
 
 atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
-K = 10000; allowed_error = 1e-8 # number of steps and allowed error
+K = 10000; allowed_error = 1e-4 # number of steps and allowed error
 
 class IdealGas:
     def __init__(self,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,Cv=None,specific_heat=None,molar_mass=None,atomic_mass=None,diameter=1e-10,dummy=False):
@@ -67,7 +67,8 @@ class IdealGas:
         if not dummy:
             self._find_missing()
 
-        self.consistency = None
+        self.ideal_gas_law_consistency = None
+        self.first_law_consistency = None
 
     def _generate_extra_data(self,show):
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
@@ -75,11 +76,12 @@ class IdealGas:
         assert self.Cv is not None, "Cv must be defined"
         self.internal_energy = self.Cv*self.n*R*self.temperature
         self.entropy = self.n*R*np.log(self.volume)+self.Cv*np.log(self.temperature)
-        self.consistency = self.pressure*self.volume-(self.n*R*self.temperature)
+        self.ideal_gas_law_consistency = self.pressure*self.volume-(self.n*R*self.temperature)
         self.calculate_work_done_by()
         self.calculate_heat_absorbed()
         self.work_done_on = -self.work_done_by
         self.heat_released = -self.heat_absorbed
+
         
         if self.molar_mass != None:
             self.rms_speed = np.sqrt(3*self.temperature*R/self.molar_mass)
@@ -88,6 +90,8 @@ class IdealGas:
             self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
             self.mean_free_time = self.mean_free_path/self.rms_speed
         
+        self.first_law_consistency = self.work_done_on+self.heat_absorbed-self.internal_energy[-1]+self.internal_energy[0]
+
         if show: self.plot_PV()
 
     def P(self,V,T):
@@ -200,6 +204,12 @@ class IdealGas:
     
     def __str__(self): # the __str__ method is used when printing the object
         return f"n: {self.n}\nP1: {self.P1}\nV1: {self.V1}\nT1: {self.T1}\nCv: {self.Cv}\ngamma: {self.gamma}\n"
+
+    def is_ideal_gas(self):
+        return np.all(np.abs(self.ideal_gas_law_consistency) < allowed_error)
+    
+    def is_first_law_satisfied(self):
+        return np.all(np.abs(self.first_law_consistency) < allowed_error)
 class Isothermal(IdealGas):
     def __init__(self,n=None,T1=None,V1=None,P1=None,monatomic=False,diatomic=False):
         """
@@ -408,6 +418,9 @@ class BaseCycle:
         self.processes = []
         self.title = ""
 
+        self.cycle_is_ideal_gas = None
+        self.cycle_is_first_law_satisfied = None
+
     def _calculate_alpha_beta(self):
         self.alpha = 1
         self.beta  = 1
@@ -512,6 +525,8 @@ class BaseCycle:
         self._calculate_work_in_cycle()
         self._calculate_heat_in_cycle()
         self._calculate_efficiency()
+        self.cycle_is_first_law_satisfied = np.all([process.is_first_law_satisfied() for process in self.processes])
+        self.cycle_is_ideal_gas = np.all([process.is_ideal_gas() for process in self.processes])
 class Carnot(BaseCycle):
     def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
         super().__init__(P1=P1,V1=V1,n=n,
@@ -523,7 +538,7 @@ class Carnot(BaseCycle):
                          diameter=diameter)
         
         self.title = "Carnot syklus"
-        theoretical_efficiency = 1-T_cold/T_hot
+        self.theoretical_efficiency = 1-T_cold/T_hot
         self._find_missing()
         self._calculate_alpha_beta()
         self.run_cycle()
