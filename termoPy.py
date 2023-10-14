@@ -186,12 +186,16 @@ class IdealGas:
     def _find_missing(self):
         assert (self.P1 != None) + (self.V1 != None) + (self.T1 != None) + (self.n != None) > 2, "Tre av P1,V1,T1 eller n må være definert"
         if self.P1 == None:
+            #print("P1 er ikke definert, regner ut P1")
             self.P1 = self.P(self.V1,self.T1)
         elif self.V1 == None:
+            #print("V1 er ikke definert, regner ut V1")
             self.V1 = self.V(self.P1,self.T1)
         elif self.T1 == None:
+            #print("T1 er ikke definert, regner ut T1")
             self.T1 = self.T(self.P1,self.V1)
         elif self.n == None:
+            #print("n er ikke definert, regner ut n")
             self.n = self.get_n(self.P1,self.V1,self.T1)
     
     def __str__(self): # the __str__ method is used when printing the object
@@ -207,12 +211,12 @@ class Isothermal(IdealGas):
         self._find_missing()
 
     def calculate_work_done_by(self):
-        self.work_done_by = R*self.n*np.log(self.volume[-1]/self.V1)
+        self.work_done_by = R*self.n*self.T1*np.log(self.volume[-1]/self.V1)
         self.work_done_on = -self.work_done_by
         return self.work_done_by
 
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.calculate_work_done_by()
+        self.heat_absorbed = -self.work_done_on
         self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
 
@@ -235,6 +239,16 @@ class Isobaric(IdealGas):
         self.title = "Isobar prosess"
         self._find_missing()
     
+    def calculate_heat_absorbed(self):
+        self.heat_absorbed = self.n*self.Cp*R*(self.temperature[-1]-self.T1)
+        self.heat_released = -self.heat_absorbed
+        return self.heat_absorbed
+    
+    def calculate_work_done_by(self):
+        self.work_done_by = self.P1*(self.volume[-1]-self.V1)
+        self.work_done_on = -self.work_done_by
+        return self.work_done_by
+    
     def generate_data_from_dV(self,V2,show=False, steps = K):
         self.volume = np.linspace(self.V1,V2,steps)
         self.temperature = self.T(self.P1,self.volume)
@@ -248,19 +262,20 @@ class Isobaric(IdealGas):
         self.pressure = self.P1*np.ones(len(self.temperature))
         self._generate_extra_data(show)
         return self.volume,self.pressure
-    
-    def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*self.Cp*R*(self.temperature[-1]-self.T1)
-        self.heat_released = -self.heat_absorbed
-        return self.heat_absorbed
 class Isochoric(IdealGas):
     def __init__(self,n=None,V1=None,T1=None,P1=None,monatomic=False,diatomic=False):
         super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
         self.title = "Isokor prosess"
         self._find_missing()
     
+    def calculate_heat_absorbed(self):
+        self.heat_absorbed = self.n*self.Cv*R*(self.temperature[-1]-self.T1)
+        self.heat_released = -self.heat_absorbed
+        return self.heat_absorbed
+    
     def calculate_work_done_by(self):
         self.work_done_by = 0
+        self.work_done_on = 0
         return self.work_done_by
     
     def generate_data_from_dT(self,T2,show=False, steps = K):
@@ -276,16 +291,6 @@ class Isochoric(IdealGas):
         self.volume = self.V1*np.ones(len(self.pressure))
         self._generate_extra_data(show)
         return self.volume,self.pressure
-    
-    def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*self.Cv*R*(self.temperature[-1]-self.T1)
-        self.heat_released = -self.heat_absorbed
-        return self.heat_absorbed
-    
-    def calculate_work_done_by(self):
-        self.work_done_by = 0
-        self.work_done_on = 0
-        return self.work_done_by
 class Adiabatic(IdealGas):
     def __init__(self,gamma=None,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False):
         super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
@@ -324,8 +329,8 @@ class Adiabatic(IdealGas):
         return self.heat_absorbed
     
     def calculate_work_done_by(self):
-        self.work_done_by = 3/2 * self.n * self.Cv * R * (self.temperature[-1]-self.T1)
-        self.work_done_on = -self.work_done_by
+        self.work_done_on = self.n * self.Cv * R * (self.temperature[-1]-self.T1)
+        self.work_done_by = -self.work_done_on
         return self.work_done_by
     
     def generate_data_from_dV(self,V2,show=False, steps = K):
@@ -408,19 +413,12 @@ class BaseCycle:
         self.beta  = 1
 
     def _calculate_work_in_cycle(self):
-        for process in self.processes:
-            work = process.calculate_work_done_by()
-            self.work_done_by += work
-            self.work_done_on -= work
+        self.work_done_by = [Process.work_done_by for Process in self.processes]
+        self.work_done_on = [Process.work_done_on for Process in self.processes]
 
     def _calculate_heat_in_cycle(self):
-        for process in self.processes:
-            # we only want to add heat absorbed, meaning positive values
-            heat_absorbed = process.calculate_heat_absorbed()
-            if heat_absorbed > 0:
-                self.heat_absorbed += heat_absorbed
-            elif heat_absorbed <= 0:
-                self.heat_released -= heat_absorbed
+        self.heat_absorbed = [Process.heat_absorbed for Process in self.processes]
+        self.heat_released = [Process.heat_released for Process in self.processes]
     
     def _calculate_carnot_efficiency(self):
         self.theoretical_efficiency = 1-self.T_cold/self.T_hot
