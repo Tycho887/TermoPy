@@ -1,14 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy
-# we need to know what time it is
+import json
 import datetime
 
 atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
 K = 10000; allowed_error = 1e-4 # number of steps and allowed error
 
-class IdealGas:
-    def __init__(self,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,Cv=None,specific_heat=None,molar_mass=None,atomic_mass=None,diameter=1e-10,dummy=False):
+with open("data/substances.JSON") as file:
+    substances = json.load(file)
+
+class BaseProcess:
+    def __init__(self,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,gas=None):
         """
         n: number of moles
         gamma: ratio of specific heats
@@ -26,46 +29,22 @@ class IdealGas:
         self.temperature = None
 
         if monatomic:
-            self.Cv = 3/2
-            self.Cp = 5/2
+            self.Cv = 3/2 * R 
+            self.Cp = 5/2 * R
             self.gamma = 5/3
         elif diatomic:
-            self.Cv = 5/2
-            self.Cp = 7/2
+            self.Cv = 5/2 * R
+            self.Cp = 7/2 * R
             self.gamma = 7/5
-        elif Cv != None:
-            self.Cv = Cv
-            self.Cp = Cv+1
-            self.gamma = Cv+1
         else:
-            self.Cv = 3/2
-            self.Cp = 5/2
+            self.Cv = 3/2 * R
+            self.Cp = 5/2 * R
             self.gamma = 5/3
         
-        self.specific_heat = specific_heat
-        self.molar_mass = molar_mass
-        self.atomic_mass = atomic_mass
-
-        self.internal_energy = None
-        self.entropy = None
-
-
-        self.work_done_by = 0
-        self.work_done_on = 0
-        self.heat_absorbed = 0
-        self.heat_released = 0
-        
-        self.diameter = diameter # 1 angstrom by default
-        self.nv = None # number of particles per volume
-
-        self.rms_speed = None
-        self.mean_free_path = None
-        self.mean_free_time = None
+        self.diameter = 3e-10 # 3 angstrom by default
+        self.M = None
         
         self.title = ""
-
-        if not dummy:
-            self._find_missing()
 
         self.ideal_gas_law_consistency = None
         self.first_law_consistency = None
@@ -74,8 +53,8 @@ class IdealGas:
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
         assert self.n is not None, "Number of moles must be defined"
         assert self.Cv is not None, "Cv must be defined"
-        self.internal_energy = self.Cv*self.n*R*self.temperature
-        self.entropy = self.n*R*np.log(self.volume)+self.Cv*np.log(self.temperature)
+        self.internal_energy = self.Cv*self.n*self.temperature
+        self.entropy = self.n*np.log(self.volume)+self.Cv*np.log(self.temperature)
         self.ideal_gas_law_consistency = self.pressure*self.volume-(self.n*R*self.temperature)
         self.calculate_work_done_by()
         self.calculate_heat_absorbed()
@@ -83,10 +62,10 @@ class IdealGas:
         self.heat_released = -self.heat_absorbed
 
         
-        if self.molar_mass != None:
-            self.rms_speed = np.sqrt(3*self.temperature*R/self.molar_mass)
+        if self.M != None:
+            self.rms_speed = np.sqrt(3*self.temperature*R/self.M)
             self.nv = self.n*6.022e23/self.volume
-            self.atomic_mass = self.molar_mass/6.022e23
+            self.atomic_mass = self.M/6.022e23
             self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
             self.mean_free_time = self.mean_free_path/self.rms_speed
         
@@ -133,7 +112,7 @@ class IdealGas:
         return self.work_done_by
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*(self.Cv+1)*R*(self.temperature[-1]-self.T1)
+        self.heat_absorbed = self.n*(self.Cv+1)*(self.temperature[-1]-self.T1)
         self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
 
@@ -210,13 +189,31 @@ class IdealGas:
     
     def is_first_law_satisfied(self):
         return np.all(np.abs(self.first_law_consistency) < allowed_error)
-class Isothermal(IdealGas):
-    def __init__(self,n=None,T1=None,V1=None,P1=None,monatomic=False,diatomic=False):
+    
+    def set_internal_values(self,gas):
+        if gas in substances:
+            self.material = substances[gas]
+            self.name = gas
+        # in case the user inputs a formula instead of a name
+        elif gas in [substances[i]["formula"] for i in substances]:
+            self.material = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.name = [i for i in substances if substances[i]["formula"]==gas][0]
+        else:
+            print("The gas you entered is not in the database")
+            self.material = substances["Air"]
+            self.name = "Air"
+        self.M = self.material["M"]
+        self.Cv = self.material["Cv"]
+        self.Cp = self.material["Cp"]
+        self.gamma = self.material["gamma"]
+        self.formula = self.material["formula"]
+class Isothermal(BaseProcess):
+    def __init__(self,n=None,T1=None,V1=None,P1=None,monatomic=False,diatomic=False,gas=None):
         """
         n: number of moles
         T: temperature (K)
         """
-        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
+        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isotermisk prosess"
         self._find_missing()
 
@@ -243,14 +240,14 @@ class Isothermal(IdealGas):
         self.temperature = self.T1*np.ones(len(self.pressure))
         self._generate_extra_data(show)
         return self.volume,self.pressure
-class Isobaric(IdealGas):
-    def __init__(self,n=None,P1=None,T1=None,V1=None,monatomic=False,diatomic=False):
-        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
+class Isobaric(BaseProcess):
+    def __init__(self,n=None,P1=None,T1=None,V1=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isobar prosess"
         self._find_missing()
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*self.Cp*R*(self.temperature[-1]-self.T1)
+        self.heat_absorbed = self.n*self.Cp*(self.temperature[-1]-self.T1)
         self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
     
@@ -272,14 +269,14 @@ class Isobaric(IdealGas):
         self.pressure = self.P1*np.ones(len(self.temperature))
         self._generate_extra_data(show)
         return self.volume,self.pressure
-class Isochoric(IdealGas):
-    def __init__(self,n=None,V1=None,T1=None,P1=None,monatomic=False,diatomic=False):
-        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
+class Isochoric(BaseProcess):
+    def __init__(self,n=None,V1=None,T1=None,P1=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isokor prosess"
         self._find_missing()
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*self.Cv*R*(self.temperature[-1]-self.T1)
+        self.heat_absorbed = self.n*self.Cv*(self.temperature[-1]-self.T1)
         self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
     
@@ -301,9 +298,9 @@ class Isochoric(IdealGas):
         self.volume = self.V1*np.ones(len(self.pressure))
         self._generate_extra_data(show)
         return self.volume,self.pressure
-class Adiabatic(IdealGas):
-    def __init__(self,gamma=None,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False):
-        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic)
+class Adiabatic(BaseProcess):
+    def __init__(self,gamma=None,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic,gas=gas)
         if gamma != None:
             self.gamma = gamma
         self.title = "Adiabatisk prosess"
@@ -339,7 +336,7 @@ class Adiabatic(IdealGas):
         return self.heat_absorbed
     
     def calculate_work_done_by(self):
-        self.work_done_on = self.n * self.Cv * R * (self.temperature[-1]-self.T1)
+        self.work_done_on = self.n * self.Cv * (self.temperature[-1]-self.T1)
         self.work_done_by = -self.work_done_on
         return self.work_done_by
     
@@ -364,8 +361,122 @@ class Adiabatic(IdealGas):
         self._generate_extra_data(show)
         return self.volume,self.pressure
     
+class IdealGas: 
+    def __init__(self, P=None,V=None,T=None,n=None,gas=None):
+        
+        P1,V1,T1,self.n = self.find_missing_values(P,V,T,n)
+
+        self.P = np.array([P1])
+        self.V = np.array([V1])
+        self.T = np.array([T1])
+
+        self.set_internal_values(gas)
+
+        self.processes = []
+
+    def __str__(self):
+        return f"""The gas is {self.name} [{self.formula}]
+The current temperature is {self.T[-1]} K
+The current pressure is {self.P[-1]} Pa
+The current volume is {self.V[-1]} m3
+The current number of moles is {self.n} mol
+and molar mass {self.M} g/mol
+The heat capacity at constant volume is {self.Cv} J/mol*K
+The heat capacity at constant pressure is {self.Cp} J/mol*K
+The adiabatic index is {self.gamma}"""
+
+    def set_internal_values(self,gas):
+        if gas in substances:
+            self.material = substances[gas]
+            self.name = gas
+        # in case the user inputs a formula instead of a name
+        elif gas in [substances[i]["formula"] for i in substances]:
+            self.material = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.name = [i for i in substances if substances[i]["formula"]==gas][0]
+        else:
+            print("The gas you entered is not in the database")
+            self.material = substances["Air"]
+            self.name = "Air"
+        self.M = self.material["M"]
+        self.Cv = self.material["Cv"]
+        self.Cp = self.material["Cp"]
+        self.gamma = self.material["gamma"]
+        self.formula = self.material["formula"]
+        
+    def find_missing_values(self,P,V,T,n):
+
+        assert (P is None) + (V is None) + (T is None) + (n is None) == 1, "You must specify exactly one missing value"
+        
+        if P is None:
+            P = n*R*T/V
+        elif V is None:
+            V = n*R*T/P
+        elif T is None:
+            T = P*V/(n*R)
+        elif n is None:
+            n = P*V/(R*T)
+        else:
+            assert np.abs(P*V - n*R*T) < 1e-10, "The values you entered are not consistent"
+        return P,V,T,n
+
+    def isothermal(self,P2=None,V2=None):
+        Adiabatic_process = Adiabatic(n=self.n,P1=self.P[-1],V1=self.V[-1],T1=self.T[-1],gas=self.material)
+        if P2 is None:
+            Adiabatic_process.generate_data_from_dV(V2=V2)
+        elif V2 is None:
+            Adiabatic_process.generate_data_from_dP(P2=P2)
+        else:
+            print("You must specify exactly one missing value")
+        self.P = np.append(self.P,Adiabatic_process.pressure)
+        self.V = np.append(self.V,Adiabatic_process.volume)
+        self.T = np.append(self.T,Adiabatic_process.temperature)
+        self.processes.append(Adiabatic_process)
+
+    def isobaric(self,V2=None,T2=None):
+        Isobaric_process = Isobaric(n=self.n,P1=self.P[-1],V1=self.V[-1],T1=self.T[-1],gas=self.material)
+        if V2 is None:
+            Isobaric_process.generate_data_from_dT(T2=T2)
+        elif T2 is None:
+            Isobaric_process.generate_data_from_dV(V2=V2)
+        else:
+            print("You must specify exactly one missing value")
+        self.P = np.append(self.P,Isobaric_process.pressure)
+        self.V = np.append(self.V,Isobaric_process.volume)
+        self.T = np.append(self.T,Isobaric_process.temperature)
+        self.processes.append(Isobaric_process)
+
+    def isochoric(self,P2=None,T2=None):
+        Isochoric_process = Isochoric(n=self.n,P1=self.P[-1],V1=self.V[-1],T1=self.T[-1],gas=self.material)
+        if P2 is None:
+            Isochoric_process.generate_data_from_dT(T2=T2)
+        elif T2 is None:
+            Isochoric_process.generate_data_from_dP(P2=P2)
+        else:
+            print("You must specify exactly one missing value")
+        self.P = np.append(self.P,Isochoric_process.pressure)
+        self.V = np.append(self.V,Isochoric_process.volume)
+        self.T = np.append(self.T,Isochoric_process.temperature)
+        self.processes.append(Isochoric_process)
+
+    def adiabatic(self,P2=None,V2=None,T2=None):
+        Adiabatic_process = Adiabatic(n=self.n,P1=self.P[-1],V1=self.V[-1],T1=self.T[-1],gas=self.material)
+        if P2 is not None:
+            Adiabatic_process.generate_data_from_dP(P2=P2)
+        elif V2 is not None:
+            Adiabatic_process.generate_data_from_dV(V2=V2)
+        elif T2 is not None:
+            Adiabatic_process.generate_data_from_dT(T2=T2)
+        else:
+            print("You must specify exactly one missing value")
+        self.P = np.append(self.P,Adiabatic_process.pressure)
+        self.V = np.append(self.V,Adiabatic_process.volume)
+        self.T = np.append(self.T,Adiabatic_process.temperature)
+        self.processes.append(Adiabatic_process)
+
+
+
 class BaseCycle:
-    def __init__(self,P1=None,V1=None,n=None,compression_ratio=None,T_hot=None,T_cold=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
+    def __init__(self,P1=None,V1=None,n=None,compression_ratio=None,T_hot=None,T_cold=None,monatomic=False,diatomic=False,gas=None):
            
         self.V1 = V1
         self.P1 = P1
@@ -376,9 +487,6 @@ class BaseCycle:
         self.T_hot = T_hot
         self.T_cold = T_cold
 
-        self.alpha = None
-        self.beta = None
-
         self.volume = None
         self.pressure = None
         self.temperature = None
@@ -386,40 +494,24 @@ class BaseCycle:
 
         self.efficiency = None
 
-        self.work_done_by = 0
-        self.work_done_on = 0
-        self.heat_absorbed = 0
-        self.heat_released = 0
-
-        self.theoretical_efficiency = None
-
         self.diatomic = diatomic
         self.monatomic = monatomic
 
         if monatomic:
             self.gamma = 5/3
-            self.Cv = 3/2
-            self.Cp = 5/2
+            self.Cv = 3/2 * R
+            self.Cp = 5/2 * R
         elif diatomic:
             self.gamma = 7/5
-            self.Cv = 5/2
-            self.Cp = 7/2
+            self.Cv = 5/2 * R
+            self.Cp = 7/2 * R
         else:
-            # we assume that the gas is monatomic if nothing else is specified
-            self.gamma = 5/3
-            self.Cv = 3/2
-            self.Cp = 5/2
+            self.set_internal_values(gas)
 
+        
 
-        self.specific_heat = specific_heat
-        self.molar_mass = molar_mass
-        self.diameter = diameter
-
-        self.processes = []
-        self.title = ""
-
-        self.cycle_is_ideal_gas = None
-        self.cycle_is_first_law_satisfied = None
+    def generate_processes(self):
+        pass
 
     def _calculate_alpha_beta(self):
         self.alpha = 1
@@ -447,8 +539,6 @@ class BaseCycle:
         assert abs(efficiency_from_heat-efficiency_from_work) < allowed_error, f"Efficiency from heat: {efficiency_from_heat:.2f}, efficiency from work: {efficiency_from_work:.2f}"
         self.efficiency = np.mean([efficiency_from_heat,efficiency_from_work])
 
-
-
     def _find_missing(self):
         assert self.P1 != None or self.V1 != None or self.n != None or self.T != None, "Tre av P,V,n eller T må være definert"
         if self.P1 == None:
@@ -459,9 +549,6 @@ class BaseCycle:
             self.T = self.P1*self.V1/(self.n*R)
         elif self.n == None:
             self.n = self.P1*self.V1/(self.T*R)
-
-    def generate_processes(self):
-        pass
 
     def _show_plt(self,save=False,name=None,xlabel=None,ylabel=None,type=""):
         plt.grid()
@@ -527,15 +614,30 @@ class BaseCycle:
         self._calculate_efficiency()
         self.cycle_is_first_law_satisfied = np.all([process.is_first_law_satisfied() for process in self.processes])
         self.cycle_is_ideal_gas = np.all([process.is_ideal_gas() for process in self.processes])
+
+    def set_internal_values(self,gas):
+        if gas in substances:
+            self.material = substances[gas]
+            self.name = gas
+        # in case the user inputs a formula instead of a name
+        elif gas in [substances[i]["formula"] for i in substances]:
+            self.material = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.name = [i for i in substances if substances[i]["formula"]==gas][0]
+        else:
+            print("The gas you entered is not in the database")
+            self.material = substances["Air"]
+            self.name = "Air"
+        self.M = self.material["M"]
+        self.Cv = self.material["Cv"]
+        self.Cp = self.material["Cp"]
+        self.gamma = self.material["gamma"]
+        self.formula = self.material["formula"]
 class Carnot(BaseCycle):
-    def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
+    def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False):
         super().__init__(P1=P1,V1=V1,n=n,
                          compression_ratio=compression_ratio,
                          T_hot=T_hot,T_cold=T_cold,
-                         monatomic=monatomic,diatomic=diatomic,
-                         specific_heat=specific_heat,
-                         molar_mass=molar_mass,
-                         diameter=diameter)
+                         monatomic=monatomic,diatomic=diatomic)
         
         self.title = "Carnot syklus"
         self.theoretical_efficiency = 1-T_cold/T_hot
@@ -569,7 +671,12 @@ class Carnot(BaseCycle):
 
         # by the definition of the compression ratio, V3 should be equal to V1*R (where R is the compression ratio)
         V3 = adiabatic_expansion.volume[-1]
-        assert abs(V3-self.V1*self.compression_ratio) < 1e-6, f"Something went wrong, V3 = {V3}, V1 = {self.V1}, beta = {self.beta}"
+        assert abs(V3-self.V1*self.compression_ratio) < allowed_error, f"""Something went wrong, V3 = {V3}, 
+V1 = {self.V1}, beta = {self.beta}
+R  = {self.compression_ratio}
+V3 = {V3}
+expected V3 = {self.V1*self.compression_ratio}
+ERROR: {abs(V3-self.V1*self.compression_ratio)}"""
 
         isothermal_compression = Isothermal(n=self.n,
                                             V1=adiabatic_expansion.volume[-1],
@@ -590,14 +697,11 @@ class Carnot(BaseCycle):
         assert abs(adiabatic_compression.pressure[-1]-self.P1) < allowed_error, f"Something went wrong, P4 = {adiabatic_compression.pressure[-1]}, P = {self.P1}, alpha = {self.alpha}"
         return self.processes
 class Otto(BaseCycle): 
-    def __init__(self,compression_ratio,T_cold,T_hot,P1=None,V1=None,n=None,monatomic=False,diatomic=False,specific_heat=None,molar_mass=None,diameter=1e-10):
+    def __init__(self,compression_ratio,T_cold,T_hot,P1=None,V1=None,n=None,monatomic=False,diatomic=False):
         super().__init__(P1=P1,V1=V1,n=n,
                          compression_ratio=compression_ratio,
                          T_hot=T_hot,T_cold=T_cold,
-                         monatomic=monatomic,diatomic=diatomic,
-                         specific_heat=specific_heat,
-                         molar_mass=molar_mass,
-                         diameter=diameter)
+                         monatomic=monatomic,diatomic=diatomic)
         
         self.title = "Otto syklus"
         self._find_missing()

@@ -34,7 +34,6 @@ class Test_TermoPy_processes(unittest.TestCase):
             if show_test: print(f"Test {i} passed")
         print("\tPASSED")
 
-
     def test_Isochoric(self):
         print("\nRunning isochoric process test\n")
         for i in range(num_tests):
