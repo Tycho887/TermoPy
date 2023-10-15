@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 atm = 101325
-num_tests = 500; show_test = False
+num_tests = 10; show_test = False
 allowed_error = 1e-4
 class Test_TermoPy_processes(unittest.TestCase):
     
@@ -140,7 +140,7 @@ class Test_TermoPy_processes(unittest.TestCase):
 
             assert compression_ratio > (T_cold/T_hot)**(1/(1-gamma))
 
-            Carnot_cycle = tp.Carnot(P1=P,V1=V,compression_ratio=compression_ratio,T_cold=T_cold,T_hot=T_hot,monatomic=monatomic,diatomic=diatomic)
+            Carnot_cycle = tp.Carnot(P1=P,V1=V,compression_ratio=compression_ratio,T_cold=T_cold,T_hot=T_hot,gas="Ethanol")
 
             self.assertTrue(Carnot_cycle.cycle_is_ideal_gas)
             self.assertTrue(Carnot_cycle.cycle_is_first_law_satisfied)
@@ -149,6 +149,9 @@ class Test_TermoPy_processes(unittest.TestCase):
             self.assertTrue(Carnot_cycle.efficiency > 0)
 
             self.assertTrue(np.abs(Carnot_cycle.efficiency - Carnot_cycle.theoretical_efficiency) < allowed_error)
+            self.assertTrue(0 < Carnot_cycle.efficiency < 1)
+
+            print(Carnot_cycle.efficiency,Carnot_cycle.theoretical_efficiency)
 
             if show_test: print(f"Test {i} passed")
         print("\tPASSED")

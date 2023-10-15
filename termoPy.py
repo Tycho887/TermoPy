@@ -28,18 +28,8 @@ class BaseProcess:
         self.pressure = None
         self.temperature = None
 
-        if monatomic:
-            self.Cv = 3/2 * R 
-            self.Cp = 5/2 * R
-            self.gamma = 5/3
-        elif diatomic:
-            self.Cv = 5/2 * R
-            self.Cp = 7/2 * R
-            self.gamma = 7/5
-        else:
-            self.Cv = 3/2 * R
-            self.Cp = 5/2 * R
-            self.gamma = 5/3
+        self.monatomic = monatomic
+        self.diatomic = diatomic
         
         self.diameter = 3e-10 # 3 angstrom by default
         self.M = None
@@ -48,6 +38,9 @@ class BaseProcess:
 
         self.ideal_gas_law_consistency = None
         self.first_law_consistency = None
+
+        self._gas = gas
+        self.fluid = None
 
     def _generate_extra_data(self,show):
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
@@ -69,7 +62,7 @@ class BaseProcess:
             self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
             self.mean_free_time = self.mean_free_path/self.rms_speed
         
-        self.first_law_consistency = self.work_done_on+self.heat_absorbed-self.internal_energy[-1]+self.internal_energy[0]
+        self.first_law_consistency = self.work_done_on+self.heat_absorbed-(self.internal_energy[-1]-self.internal_energy[0])
 
         if show: self.plot_PV()
 
@@ -167,6 +160,7 @@ class BaseProcess:
         self._show_picture(save,name,type="PVT")
 
     def _find_missing(self):
+        self.set_internal_values()
         assert (self.P1 != None) + (self.V1 != None) + (self.T1 != None) + (self.n != None) > 2, "Tre av P1,V1,T1 eller n må være definert"
         if self.P1 == None:
             #print("P1 er ikke definert, regner ut P1")
@@ -188,25 +182,36 @@ class BaseProcess:
         return np.all(np.abs(self.ideal_gas_law_consistency) < allowed_error)
     
     def is_first_law_satisfied(self):
+        print(f"1st law cons: {self.first_law_consistency:.3e}\nT1:{self.T1:.3e} T2:{self.temperature[-1]:.3e}\nInit energy: {self.internal_energy[0]:.3e} Final energy:{self.internal_energy[-1]:.3e}\nQ_in:{self.heat_absorbed:.3e} W_done:{self.work_done_by:.3e}")
         return np.all(np.abs(self.first_law_consistency) < allowed_error)
     
-    def set_internal_values(self,gas):
-        if gas in substances:
-            self.material = substances[gas]
+    def set_internal_values(self):
+        gas = self._gas
+        if self.monatomic:
+            self.fluid = substances["Helium"]
+        elif self.diatomic:
+            self.fluid = substances["Nitrogen"]
+        # gas is a dict, so we need to check if it is in the database
+        if gas in substances.keys():
+            self.fluid = substances[gas]
             self.name = gas
         # in case the user inputs a formula instead of a name
         elif gas in [substances[i]["formula"] for i in substances]:
-            self.material = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.fluid = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
             self.name = [i for i in substances if substances[i]["formula"]==gas][0]
-        else:
-            print("The gas you entered is not in the database")
-            self.material = substances["Air"]
+        elif gas == None:
+            self.fluid = substances["Air"]
             self.name = "Air"
-        self.M = self.material["M"]
-        self.Cv = self.material["Cv"]
-        self.Cp = self.material["Cp"]
-        self.gamma = self.material["gamma"]
-        self.formula = self.material["formula"]
+        else:
+            raise ValueError("The gas you entered is not in the database")
+        
+        assert self.diatomic or self.monatomic or self.fluid != None
+
+        self.M = self.fluid["M"]
+        self.Cv = self.fluid["Cv"]
+        self.Cp = self.fluid["Cp"]
+        self.gamma = self.fluid["gamma"]
+        self.formula = self.fluid["formula"]
 class Isothermal(BaseProcess):
     def __init__(self,n=None,T1=None,V1=None,P1=None,monatomic=False,diatomic=False,gas=None):
         """
@@ -247,7 +252,7 @@ class Isobaric(BaseProcess):
         self._find_missing()
     
     def calculate_heat_absorbed(self):
-        self.heat_absorbed = self.n*self.Cp*(self.temperature[-1]-self.T1)
+        self.heat_absorbed = self.n*self.Cp*(self.temperature[-1]-self.temperature[0])
         self.heat_released = -self.heat_absorbed
         return self.heat_absorbed
     
@@ -299,10 +304,9 @@ class Isochoric(BaseProcess):
         self._generate_extra_data(show)
         return self.volume,self.pressure
 class Adiabatic(BaseProcess):
-    def __init__(self,gamma=None,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,gas=None):
+    def __init__(self,n=None,P1=None,V1=None,T1=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P1=P1,V1=V1,T1=T1,monatomic=monatomic,diatomic=diatomic,gas=gas)
-        if gamma != None:
-            self.gamma = gamma
+
         self.title = "Adiabatisk prosess"
         self._find_missing()
     
@@ -497,18 +501,13 @@ class BaseCycle:
         self.diatomic = diatomic
         self.monatomic = monatomic
 
-        if monatomic:
-            self.gamma = 5/3
-            self.Cv = 3/2 * R
-            self.Cp = 5/2 * R
-        elif diatomic:
-            self.gamma = 7/5
-            self.Cv = 5/2 * R
-            self.Cp = 7/2 * R
-        else:
-            self.set_internal_values(gas)
+        self.M = None
+        self.Cv = None
+        self.Cp = None
+        self.gamma = None
+        self.formula = None
 
-        
+        self._gas = gas
 
     def generate_processes(self):
         pass
@@ -608,6 +607,7 @@ class BaseCycle:
         self._show_plt(save,name,type="PVT")
 
     def run_cycle(self):
+        self.set_internal_values()
         self.generate_processes()
         self._calculate_work_in_cycle()
         self._calculate_heat_in_cycle()
@@ -615,31 +615,44 @@ class BaseCycle:
         self.cycle_is_first_law_satisfied = np.all([process.is_first_law_satisfied() for process in self.processes])
         self.cycle_is_ideal_gas = np.all([process.is_ideal_gas() for process in self.processes])
 
-    def set_internal_values(self,gas):
+    def set_internal_values(self):
+        gas = self._gas
+        if self.monatomic:
+            self.fluid = substances["Helium"]
+        elif self.diatomic:
+            self.fluid = substances["Nitrogen"]
         if gas in substances:
-            self.material = substances[gas]
+            self.fluid = substances[gas]
             self.name = gas
         # in case the user inputs a formula instead of a name
         elif gas in [substances[i]["formula"] for i in substances]:
-            self.material = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.fluid = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
             self.name = [i for i in substances if substances[i]["formula"]==gas][0]
-        else:
-            print("The gas you entered is not in the database")
-            self.material = substances["Air"]
+        elif gas == None:
+            self.fluid = substances["Air"]
             self.name = "Air"
-        self.M = self.material["M"]
-        self.Cv = self.material["Cv"]
-        self.Cp = self.material["Cp"]
-        self.gamma = self.material["gamma"]
-        self.formula = self.material["formula"]
+        else:
+            raise ValueError("The gas you entered is not in the database")
+        
+        assert self.diatomic or self.monatomic or self.fluid != None
+
+        self.M = self.fluid["M"]
+        self.Cv = self.fluid["Cv"]
+        self.Cp = self.fluid["Cp"]
+        self.gamma = self.fluid["gamma"]
+        self.formula = self.fluid["formula"]
+            
+
 class Carnot(BaseCycle):
-    def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False):
+    def __init__(self,compression_ratio,T_hot,T_cold,P1=None,V1=None,n=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(P1=P1,V1=V1,n=n,
                          compression_ratio=compression_ratio,
                          T_hot=T_hot,T_cold=T_cold,
-                         monatomic=monatomic,diatomic=diatomic)
+                         monatomic=monatomic,diatomic=diatomic,
+                         gas=gas)
         
         self.title = "Carnot syklus"
+        self.set_internal_values()
         self.theoretical_efficiency = 1-T_cold/T_hot
         self._find_missing()
         self._calculate_alpha_beta()
@@ -656,39 +669,48 @@ class Carnot(BaseCycle):
         self.processes = []
         
         isothermal_expansion = Isothermal(n=self.n,
-                                          V1=self.V1,
-                                          T1=self.T_hot,
-                                          diatomic=self.diatomic)
+                                        V1=self.V1,
+                                         T1=self.T_hot,
+                                        diatomic=self.diatomic,
+                                        monatomic=self.monatomic,
+                                        gas=self._gas)
         isothermal_expansion.generate_data_from_dV(self.alpha*self.V1)
         self.processes.append(isothermal_expansion)
 
         adiabatic_expansion = Adiabatic(n=self.n,
                                         V1=isothermal_expansion.volume[-1],
                                         T1=isothermal_expansion.temperature[-1],
-                                        diatomic=self.diatomic)
+                                        diatomic=self.diatomic,
+                                        monatomic=self.monatomic,
+                                        gas=self._gas)
         adiabatic_expansion.generate_data_from_dT(self.T_cold)
         self.processes.append(adiabatic_expansion)
 
         # by the definition of the compression ratio, V3 should be equal to V1*R (where R is the compression ratio)
         V3 = adiabatic_expansion.volume[-1]
         assert abs(V3-self.V1*self.compression_ratio) < allowed_error, f"""Something went wrong, V3 = {V3}, 
-V1 = {self.V1}, beta = {self.beta}
-R  = {self.compression_ratio}
-V3 = {V3}
+molar mass: {self.M}, Cv: {self.Cv}, Cp: {self.Cp}, gamma: {self.gamma}    
+V1: {self.V1}, beta = {self.beta}
+Compression ratio: {self.compression_ratio}
+V3: {V3}
 expected V3 = {self.V1*self.compression_ratio}
 ERROR: {abs(V3-self.V1*self.compression_ratio)}"""
 
         isothermal_compression = Isothermal(n=self.n,
                                             V1=adiabatic_expansion.volume[-1],
                                             T1=self.T_cold,
-                                            diatomic=self.diatomic)
+                                            diatomic=self.diatomic,
+                                            monatomic=self.monatomic,
+                                        gas=self._gas)
         isothermal_compression.generate_data_from_dV(self.beta*V3)
         self.processes.append(isothermal_compression)
 
         adiabatic_compression = Adiabatic(n=self.n,
-                                          V1=isothermal_compression.volume[-1],
-                                          T1=isothermal_compression.temperature[-1],
-                                          diatomic=self.diatomic)
+                                        V1=isothermal_compression.volume[-1],
+                                        T1=isothermal_compression.temperature[-1],
+                                        diatomic=self.diatomic,
+                                        monatomic=self.monatomic,
+                                        gas=self._gas)
         adiabatic_compression.generate_data_from_dT(self.T_hot)
         self.processes.append(adiabatic_compression)
 
@@ -732,8 +754,6 @@ class Otto(BaseCycle):
         self.processes.append(isochoric_heat_rejection)
 
         return self.processes
-
-
 class Brayton(BaseCycle):
     pass
 class Stirling(BaseCycle):
