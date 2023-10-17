@@ -6,16 +6,13 @@ import pandas as pd
 import json
 import unittest
 
-
 atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
 K = 10000; allowed_error = 1e-4 # number of steps and allowed error
-
-print("Loading data...")
 
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-class StaticGas:
+class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
         
         if monatomic:
@@ -79,10 +76,7 @@ Molar mass: {self.M}
 Cv: {self.Cv}
 Cp: {self.Cp}
 gamma: {self.gamma}"""
-
-#print(StaticGas(P=1*atm,V=1,T=300,monatomic=True))
-
-class Dynamic(StaticGas):
+class Dynamic(Static):
     def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
         super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic)
         """
@@ -305,3 +299,71 @@ class Adiabatic(Dynamic):
         else:
             raise ValueError("P, V or T must be defined")
         self._generate_extra_data(False)
+
+num_tests = 100
+class ProcessTester(unittest.TestCase):
+
+    def initial_state(self):
+        P = np.random.uniform(0.1*atm,10*atm)
+        V = np.random.uniform(1e-4,10)
+        T = np.random.uniform(10,1000)
+        n = P*V/(R*T)
+        monatomic = np.random.choice([True]) # FIKS DETTE
+        return P,V,T,n,monatomic
+
+    def standard_line(self,type, first_law_errors, ideal_gas_errors):
+        return f"\nTesting data generation from {type} change: PASSED\n\n\tFirst law inconsistency: {np.max(first_law_errors)} \n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
+
+    def header(self,text):
+        return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
+    
+    def assertions(self,process):
+        self.assertTrue(process.is_ideal_gas(),f"P: {process.P}, V: {process.V}, T: {process.T}, n: {process.n}")
+        self.assertTrue(process.is_first_law_satisfied(),f"P: {process.P}, V: {process.V}, T: {process.T}, n: {process.n}")
+        self.assertTrue(process.work_done_on + process.work_done_by < allowed_error)
+        self.assertTrue(process.heat_absorbed + process.heat_released < allowed_error)
+    
+    def process_loop_methods(self,get_process):
+        first_law_errors = []; ideal_gas_errors = []
+        for i in range(num_tests):
+            P, V, T, n, mono = self.initial_state()
+            # we want to choose a random number between 0 and 100)
+            process = get_process(P=P,V=V,T=T,monatomic=mono)
+            process.final(P = P*np.random.uniform(0,100))
+            self.assertions(process)
+            process.final(P = P/np.random.uniform(0,100))
+            self.assertions(process)
+            process.final(V = V*np.random.uniform(0,100))
+            self.assertions(process)
+            process.final(V = V/np.random.uniform(0,100))
+            self.assertions(process)
+            process.final(T = T*np.random.uniform(0,100))
+            self.assertions(process)
+            process.final(T = T/np.random.uniform(0,100))
+            self.assertions(process)
+            first_law_errors.append(process.first_law_consistency)
+            ideal_gas_errors.append(np.max(process.ideal_gas_law_consistency))
+        return first_law_errors, ideal_gas_errors
+
+    def test_Isothermal(self):
+        print(self.header("Running isothermal test"))
+        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isothermal(P=P,V=V,T=T,monatomic=monatomic))
+        print(self.standard_line("isothermal",Error_first_law,Error_ideal_gas_law))
+
+    def test_Isobaric(self):
+        print(self.header("Running isobaric test"))
+        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isobaric(P=P,V=V,T=T,monatomic=monatomic))
+        print(self.standard_line("isobaric",Error_first_law,Error_ideal_gas_law))
+
+    def test_Isochoric(self):
+        print(self.header("Running isochoric test"))
+        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isochoric(P=P,V=V,T=T,monatomic=monatomic))
+        print(self.standard_line("isochoric",Error_first_law,Error_ideal_gas_law))
+
+    def test_Adiabatic(self):
+        print(self.header("Running adiabatic test"))
+        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Adiabatic(P=P,V=V,T=T,monatomic=monatomic))
+        print(self.standard_line("adiabatic",Error_first_law,Error_ideal_gas_law))
+
+if __name__ == "__main__":
+    unittest.main()

@@ -2,26 +2,24 @@ import tp_processes as tp
 import unittest
 import numpy as np
 
+allowed_error = 1e-6
 atm = 101325
-num_tests = 10; show_test = False
-allowed_error = 1e-3
-
-# we want to rewrite the test as a unittest
-
-class Initial_state:
-    P = np.random.uniform(0.1*tp.atm,10*tp.atm)
-    V = np.random.uniform(1e-4,10)
-    T = np.random.uniform(10,1000)
-    n = P*V/(tp.R*T)
-    monatomic = np.random.choice([True])
-
-def standard_line(type, first_law_errors, ideal_gas_errors):
-    return f"\nTesting data generation from {type} change: PASSED\n\n\tFirst law inconsistency: {np.max(first_law_errors)} \n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
-
-def header(text):
-    return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
-
+num_tests = 100
 class test_TermoPy(unittest.TestCase):
+
+    def initial_state(self):
+        P = np.random.uniform(0.1*tp.atm,10*tp.atm)
+        V = np.random.uniform(1e-4,10)
+        T = np.random.uniform(10,1000)
+        n = P*V/(tp.R*T)
+        monatomic = np.random.choice([True])
+        return P,V,T,n,monatomic
+
+    def standard_line(self,type, first_law_errors, ideal_gas_errors):
+        return f"\nTesting data generation from {type} change: PASSED\n\n\tFirst law inconsistency: {np.max(first_law_errors)} \n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
+
+    def header(self,text):
+        return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
     
     def assertions(self,process):
         self.assertTrue(process.is_ideal_gas(),f"P: {process.P}, V: {process.V}, T: {process.T}, n: {process.n}")
@@ -32,8 +30,7 @@ class test_TermoPy(unittest.TestCase):
     def process_loop_methods(self,get_process):
         first_law_errors = []; ideal_gas_errors = []
         for i in range(num_tests):
-            case = Initial_state()
-            P, V, T, mono = case.P, case.V, case.T, case.monatomic
+            P, V, T, n, mono = self.initial_state()
             # we want to choose a random number between 0 and 100)
             process = get_process(P=P,V=V,T=T,monatomic=mono)
             process.final(P = P*np.random.uniform(0,100))
@@ -53,24 +50,24 @@ class test_TermoPy(unittest.TestCase):
         return first_law_errors, ideal_gas_errors
 
     def test_Isothermal(self):
-        print(header("Running isothermal test"))
+        print(self.header("Running isothermal test"))
         Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: tp.Isothermal(P=P,V=V,T=T,monatomic=monatomic))
-        print(standard_line("isothermal",Error_first_law,Error_ideal_gas_law))
+        print(self.standard_line("isothermal",Error_first_law,Error_ideal_gas_law))
 
     def test_Isobaric(self):
-        print(header("Running isobaric test"))
+        print(self.header("Running isobaric test"))
         Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: tp.Isobaric(P=P,V=V,T=T,monatomic=monatomic))
-        print(standard_line("isobaric",Error_first_law,Error_ideal_gas_law))
+        print(self.standard_line("isobaric",Error_first_law,Error_ideal_gas_law))
 
     def test_Isochoric(self):
-        print(header("Running isochoric test"))
+        print(self.header("Running isochoric test"))
         Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: tp.Isochoric(P=P,V=V,T=T,monatomic=monatomic))
-        print(standard_line("isochoric",Error_first_law,Error_ideal_gas_law))
+        print(self.standard_line("isochoric",Error_first_law,Error_ideal_gas_law))
 
     def test_Adiabatic(self):
-        print(header("Running adiabatic test"))
+        print(self.header("Running adiabatic test"))
         Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: tp.Adiabatic(P=P,V=V,T=T,monatomic=monatomic))
-        print(standard_line("adiabatic",Error_first_law,Error_ideal_gas_law))
+        print(self.standard_line("adiabatic",Error_first_law,Error_ideal_gas_law))
 
 
 
@@ -119,8 +116,5 @@ class test_TermoPy(unittest.TestCase):
         # print("\nTesting data from Carnot Cycle: PASSED")
         # print(f"\n\tFirst law inconsistency: {np.max(first_law_errors)} \n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)} \n\tEfficiency error: {np.max(efficiency_errors)}")
 
-
-
 if __name__ == "__main__":
-    # we want to run the tests in alhabetical order
     unittest.main()
