@@ -80,9 +80,9 @@ Cv: {self.Cv}
 Cp: {self.Cp}
 gamma: {self.gamma}"""
 
-print(StaticGas(P=1*atm,V=1,T=300,monatomic=True))
+#print(StaticGas(P=1*atm,V=1,T=300,monatomic=True))
 
-class IdealGas(StaticGas):
+class Dynamic(StaticGas):
     def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
         super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic)
         """
@@ -186,7 +186,7 @@ class IdealGas(StaticGas):
         self.work = np.trapz(self.pressure,self.volume)
         self.heat = self.heat_absorbed
 
-class Isothermal(IdealGas):
+class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False):
         """
         n: number of moles
@@ -218,7 +218,7 @@ class Isothermal(IdealGas):
         else:
             raise ValueError("P, V or T must be defined")
         self._generate_extra_data(False)                  
-class Isobaric(IdealGas):
+class Isobaric(Dynamic):
     def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
         self.title = "Isobar prosess"
@@ -247,7 +247,7 @@ class Isobaric(IdealGas):
         else:
             raise ValueError("P, V or T must be defined")
         self._generate_extra_data(False)
-class Isochoric(IdealGas):
+class Isochoric(Dynamic):
     def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
         self.title = "Isokor prosess"
@@ -275,7 +275,7 @@ class Isochoric(IdealGas):
         else:
             raise ValueError("P, V or T must be defined")
         self._generate_extra_data(False)
-class Adiabatic(IdealGas):
+class Adiabatic(Dynamic):
     def __init__(self,gamma=None,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
         if gamma != None:
