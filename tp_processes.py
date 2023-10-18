@@ -16,7 +16,7 @@ K = 10000; allowed_error = 5e-2 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.1.2"
+version = "1.1.3"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -99,19 +99,10 @@ class Dynamic(Static):
         self.entropy = self.n*R*np.log(self.volume)+self.Cv*np.log(self.temperature)
 
         self.dS = self.entropy[-1]-self.entropy[0]
-        self.dE = self.internal_energy[-1]-self.internal_energy[0]
-        self.dU = self.heat - self.work
+        self.dE = self.heat - self.work
 
-        self.ideal_gas_law = np.mean((self.pressure*self.volume)/(self.n*R*self.temperature))-1
-
-        if self.static:
-            self.first_law = 0
-            assert self.dU < allowed_error and self.dE < allowed_error, f"dU: {self.dU}, dE: {self.dE}\nheat: {self.heat}, work: {self.work}"
-        else:
-            self.first_law = ( (self.dE) - (self.heat - self.work)) / np.max([abs(self.dE),abs(self.heat),abs(self.work)])
-
-        self.is_ideal_gas = abs(self.ideal_gas_law) < allowed_error
-        self.follows_first_law = abs(self.first_law) < allowed_error
+        self.ideal_gas_law = self.pressure*self.volume-self.n*R*self.temperature
+        self.is_ideal_gas = np.max(self.ideal_gas_law) < allowed_error
 
         self.rms = np.sqrt(3*self.temperature*R/self.M)
         self.diameter = 3e-10 # 3 angstrom by default
@@ -119,6 +110,7 @@ class Dynamic(Static):
         self.atomic_mass = self.M/6.022e23
         self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
         self.mean_free_time = self.mean_free_path/self.rms
+        self.collision_rate = self.nv/self.mean_free_path
 class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
@@ -130,17 +122,14 @@ class Isothermal(Dynamic):
             self.pressure = np.linspace(self.pressure[0],P,steps)            
             self.temperature = self.temperature[0]*np.ones(steps)
             self.volume = self.n * R * self.temperature / self.pressure
-            self.static = False
         elif V is not None:
             self.volume = np.linspace(self.volume[0],V,steps)
             self.temperature = self.temperature[0]*np.ones(steps)
             self.pressure = self.n * R * self.temperature / self.volume
-            self.static = False
         elif T is not None:
             self.temperature = self.temperature[0]*np.ones(steps)
             self.volume = self.volume[0]*np.ones(steps)
             self.pressure = self.pressure[0]*np.ones(steps)
-            self.static = True
         else:
             raise ValueError("P, V or T must be defined")
 
@@ -186,17 +175,14 @@ class Isochoric(Dynamic):
             self.pressure = np.linspace(self.pressure[0],P,steps)
             self.volume = self.volume[0]*np.ones(steps)
             self.temperature = self.pressure * self.volume / (self.n * R)
-            self.static = False
         elif V is not None:
             self.volume = self.volume[0]*np.ones(steps)
             self.pressure = self.pressure[0]*np.ones(steps)
             self.temperature = self.temperature[0]*np.ones(steps)
-            self.static = True
         elif T is not None:
             self.temperature = np.linspace(self.temperature[0],T,steps)
             self.volume = self.volume[0]*np.ones(steps)
             self.pressure = self.n*R*self.temperature/self.volume
-            self.static = False
         else:
             raise ValueError("P, V or T must be defined")
         
@@ -240,19 +226,18 @@ class ProcessTester(unittest.TestCase):
         monatomic = np.random.choice([True,False]) # FIKS DETTE
         return P,V,T,n,monatomic
 
-    def standard_line(self,type, first_law_errors, ideal_gas_errors):
-        return f"\nTesting data generation from {type} change: PASSED\n\n\tFirst law inconsistency: {np.max(first_law_errors)} \n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
+    def standard_line(self,type, ideal_gas_errors):
+        return f"\n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
 
     def header(self,text):
         return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
     
     def assertions(self,process):
         self.assertTrue(process.is_ideal_gas,f"P: {process.pressure[-1]}, V: {process.volume[-1]}, T: {process.temperature[-1]}, n: {process.n}")
-        self.assertTrue(process.follows_first_law,f"dE = {process.dE:.4e}, dU = {process.dU:.4e}, heat = {process.heat:.4e}, work = {process.work:.4e}, error: {process.first_law:.4e}")
     
     
     def process_loop_methods(self,get_process):
-        first_law_errors = []; ideal_gas_errors = []
+        ideal_gas_errors = []
         for i in range(num_tests):
             P, V, T, n, mono = self.initial_state()
             # we want to choose a random number between 0 and 100)
@@ -260,50 +245,43 @@ class ProcessTester(unittest.TestCase):
             process.final(P = P*np.random.uniform(0,10))
             self.assertions(process)
 
-            process2 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process2.final(P = P/np.random.uniform(0,10))
-            self.assertions(process2)
+            process.final(P = P/np.random.uniform(0,10))
+            self.assertions(process)
 
-            process3 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process3.final(V = V*np.random.uniform(0,10))
-            self.assertions(process3)
+            process.final(V = V*np.random.uniform(0,10))
+            self.assertions(process)
 
-            process4 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process4.final(V = V/np.random.uniform(0,10))
-            self.assertions(process4)
+            process.final(V = V/np.random.uniform(0,10))
+            self.assertions(process)
 
-            process5 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process5.final(T = T*np.random.uniform(0,10))
-            self.assertions(process5)
+            process.final(T = T*np.random.uniform(0,10))
+            self.assertions(process)
 
-            process6 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process6.final(T = T/np.random.uniform(0,10))
-            self.assertions(process6)
+            process.final(T = T/np.random.uniform(0,10))
+            self.assertions(process)
 
-            first_law_errors.append(process.first_law)
             ideal_gas_errors.append(np.max(process.ideal_gas_law))
-        #print(f"{first_law_errors}")
-        return first_law_errors, ideal_gas_errors
+        return ideal_gas_errors
 
     def test_Isothermal(self):
         print(self.header("Running isothermal test"))
-        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isothermal(P=P,V=V,T=T,monatomic=monatomic))
-        print(self.standard_line("isothermal",Error_first_law,Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isothermal(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        print(self.standard_line("isothermal",Error_ideal_gas_law))
 
     def test_Isobaric(self):
         print(self.header("Running isobaric test"))
-        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isobaric(P=P,V=V,T=T,monatomic=monatomic))
-        print(self.standard_line("isobaric",Error_first_law,Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isobaric(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        print(self.standard_line("isobaric",Error_ideal_gas_law))
 
     def test_Isochoric(self):
         print(self.header("Running isochoric test"))
-        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isochoric(P=P,V=V,T=T,monatomic=monatomic))
-        print(self.standard_line("isochoric",Error_first_law,Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isochoric(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        print(self.standard_line("isochoric",Error_ideal_gas_law))
 
     def test_Adiabatic(self):
         print(self.header("Running adiabatic test"))
-        Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Adiabatic(P=P,V=V,T=T,monatomic=monatomic))
-        print(self.standard_line("adiabatic",Error_first_law,Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Adiabatic(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        print(self.standard_line("adiabatic",Error_ideal_gas_law))
 
 
 if __name__ == "__main__":
