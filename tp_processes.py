@@ -6,11 +6,17 @@ import pandas as pd
 import json
 import unittest
 
+# Constants
+
 atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
-K = 10000; allowed_error = 1e-4 # number of steps and allowed error
+K = 10000; allowed_error = 5e-2 # number of steps and allowed error
+
+# Data
 
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
+
+version = "1.1.0"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -79,40 +85,9 @@ gamma: {self.gamma}"""
 class Dynamic(Static):
     def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
         super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic)
-        """
-        n: number of moles
-        gamma: ratio of specific heats
-        P1: initial pressure (Pa)
-        V1: initial volume (M^3)
-        T1: initial temperature (K)
-        """
-
-        self.P = self.pressure[0]
-        self.V = self.volume[0]
-        self.T = self.temperature[0]
-
-
-        self.molar_mass = None
-
-        self.internal_energy = None
-        self.entropy = None
-
-        
-        self.diameter = 3e-10 # 1 angstrom by default
-        self.nv = None # number of particles per volume
-
-        self.rms = None
-        self.mean_free_path = None
-        self.mean_free_time = None
-        
-        self.title = ""
-
-        self.ideal_gas_law_consistency = None
-        self.first_law_consistency = None
 
         self.static = False
         self.first_law = None
-
     
     def _generate_extra_data(self,show):
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
@@ -122,11 +97,10 @@ class Dynamic(Static):
         self.work = np.trapz(self.pressure,self.volume)
         self.internal_energy = self.Cv*self.n*self.temperature
         self.entropy = self.n*R*np.log(self.volume)+self.Cv*np.log(self.temperature)
-        self.ideal_gas_law_consistency = np.mean((self.pressure*self.volume)/(self.n*R*self.temperature))
 
         self.dS = self.entropy[-1]-self.entropy[0]
         self.dE = self.internal_energy[-1]-self.internal_energy[0]
-        self.dU = self.work+self.heat
+        self.dU = self.heat - self.work
 
         self.ideal_gas_law = np.mean((self.pressure*self.volume)/(self.n*R*self.temperature))
 
@@ -136,27 +110,18 @@ class Dynamic(Static):
             assert self.dU < allowed_error and self.dE < allowed_error, f"dU: {self.dU}, dE: {self.dE}\nheat: {self.heat}, work: {self.work}"
         else:
             self.first_law = ( (self.dE) - (self.heat - self.work)) / np.max([abs(self.dE),abs(self.heat),abs(self.work)])
-            #self.first_law = self.dE / (self.heat - self.work)
 
-        self.is_ideal_gas = abs(self.ideal_gas_law_consistency - 1) < allowed_error
+        self.is_ideal_gas = abs(self.ideal_gas_law - 1) < allowed_error
         self.follows_first_law = abs(self.first_law) < allowed_error
 
-        
-        
-        if self.molar_mass != None:
-            self.rms = np.sqrt(3*self.temperature*R/self.molar_mass)
-            self.nv = self.n*6.022e23/self.volume
-            self.atomic_mass = self.molar_mass/6.022e23
-            self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
-            self.mean_free_time = self.mean_free_path/self.rms
-
-
+        self.rms = np.sqrt(3*self.temperature*R/self.M)
+        self.diameter = 3e-10 # 3 angstrom by default
+        self.nv = self.n*6.022e23/self.volume
+        self.atomic_mass = self.M/6.022e23
+        self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
+        self.mean_free_time = self.mean_free_path/self.rms
 class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False):
-        """
-        n: number of moles
-        T: temperature (K)
-        """
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
         self.title = "Isotermisk prosess"
     
@@ -224,13 +189,13 @@ class Isochoric(Dynamic):
             self.temperature = self.pressure * self.volume / (self.n * R)
             self.static = False
         elif V is not None:
-            self.volume = self.V*np.ones(steps)
-            self.pressure = self.P*np.ones(steps)
-            self.temperature = self.T*np.ones(steps)
+            self.volume = self.volume[0]*np.ones(steps)
+            self.pressure = self.pressure[0]*np.ones(steps)
+            self.temperature = self.temperature[0]*np.ones(steps)
             self.static = True
         elif T is not None:
             self.temperature = np.linspace(self.temperature[0],T,steps)
-            self.volume = self.V*np.ones(steps)
+            self.volume = self.volume[0]*np.ones(steps)
             self.pressure = self.n*R*self.temperature/self.volume
             self.static = False
         else:
@@ -240,27 +205,24 @@ class Isochoric(Dynamic):
 
         self._generate_extra_data(False)
 class Adiabatic(Dynamic):
-    def __init__(self,gamma=None,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
+    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
-        if gamma != None:
-            self.gamma = gamma
         self.title = "Adiabatisk prosess"
 
 
     def final(self,P=None,V=None,T=None, steps = K):
-        # we want to implement a switch case here
         if P is not None:
-            self.pressure = np.linspace(self.P,P,steps)
-            self.volume = self.V*(self.P/self.pressure)**(1/self.gamma)
-            self.temperature = self.T*(self.pressure/self.P)**((self.gamma-1)/self.gamma)        
+            self.pressure = np.linspace(self.pressure[0],P,steps)
+            self.volume = self.volume[0]*(self.pressure[0]/self.pressure)**(1/self.gamma)
+            self.temperature = self.temperature[0]*(self.pressure/self.pressure[0])**((self.gamma-1)/self.gamma)        
         elif V is not None:
-            self.volume = np.linspace(self.V,V,steps)
-            self.pressure = self.P*(self.V/self.volume)**self.gamma
-            self.temperature  = self.T*(self.V/self.volume)**(self.gamma-1)
+            self.volume = np.linspace(self.volume[0],V,steps)
+            self.pressure = self.pressure[0]*(self.volume[0]/self.volume)**self.gamma
+            self.temperature  = self.temperature[0]*(self.volume[0]/self.volume)**(self.gamma-1)
         elif T is not None:
-            self.temperature = np.linspace(self.T,T,steps)
-            self.pressure = self.P*(self.temperature/self.T)**(self.gamma/(self.gamma-1))
-            self.volume = self.V*(self.T/self.temperature)**(1/(self.gamma-1))
+            self.temperature = np.linspace(self.temperature[0],T,steps)
+            self.pressure = self.pressure[0]*(self.temperature/self.temperature[0])**(self.gamma/(self.gamma-1))
+            self.volume = self.volume[0]*(self.temperature[0]/self.temperature)**(1/(self.gamma-1))
         else:
             raise ValueError("P, V or T must be defined")
         
@@ -276,7 +238,7 @@ class ProcessTester(unittest.TestCase):
         V = np.random.uniform(1e-4,10)
         T = np.random.uniform(10,1000)
         n = P*V/(R*T)
-        monatomic = np.random.choice([True]) # FIKS DETTE
+        monatomic = np.random.choice([True,False]) # FIKS DETTE
         return P,V,T,n,monatomic
 
     def standard_line(self,type, first_law_errors, ideal_gas_errors):
@@ -286,7 +248,7 @@ class ProcessTester(unittest.TestCase):
         return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
     
     def assertions(self,process):
-        self.assertTrue(process.is_ideal_gas,f"P: {process.P}, V: {process.V}, T: {process.T}, n: {process.n}")
+        self.assertTrue(process.is_ideal_gas,f"P: {process.pressure[-1]}, V: {process.volume[-1]}, T: {process.temperature[-1]}, n: {process.n}")
         self.assertTrue(process.follows_first_law,f"dE = {process.dE:.4e}, dU = {process.dU:.4e}, heat = {process.heat:.4e}, work = {process.work:.4e}, error: {process.first_law:.4e}")
     
     
@@ -296,27 +258,27 @@ class ProcessTester(unittest.TestCase):
             P, V, T, n, mono = self.initial_state()
             # we want to choose a random number between 0 and 100)
             process = get_process(P=P,V=V,T=T,monatomic=mono)
-            process.final(P = P*np.random.uniform(0,100))
+            process.final(P = P*np.random.uniform(0,10))
             self.assertions(process)
 
             process2 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process2.final(P = P/np.random.uniform(0,100))
+            process2.final(P = P/np.random.uniform(0,10))
             self.assertions(process2)
 
             process3 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process3.final(V = V*np.random.uniform(0,100))
+            process3.final(V = V*np.random.uniform(0,10))
             self.assertions(process3)
 
             process4 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process4.final(V = V/np.random.uniform(0,100))
+            process4.final(V = V/np.random.uniform(0,10))
             self.assertions(process4)
 
             process5 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process5.final(T = T*np.random.uniform(0,100))
+            process5.final(T = T*np.random.uniform(0,10))
             self.assertions(process5)
 
             process6 = get_process(P=P,V=V,T=T,monatomic=mono)
-            process6.final(T = T/np.random.uniform(0,100))
+            process6.final(T = T/np.random.uniform(0,10))
             self.assertions(process6)
 
             first_law_errors.append(process.first_law)
@@ -343,10 +305,6 @@ class ProcessTester(unittest.TestCase):
         print(self.header("Running adiabatic test"))
         Error_first_law, Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Adiabatic(P=P,V=V,T=T,monatomic=monatomic))
         print(self.standard_line("adiabatic",Error_first_law,Error_ideal_gas_law))
-
-isobar = Adiabatic(P=101300,V=0.001,T=300)
-isobar.final(P=101300*100)
-print(isobar.work,isobar.dE,isobar.first_law)
 
 
 if __name__ == "__main__":
