@@ -1,8 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from copy import deepcopy
-import datetime
-import pandas as pd
 import json
 import unittest
 
@@ -16,7 +12,7 @@ K = 10000; allowed_error = 5e-2 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.0"
+version = "1.2.1"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -225,7 +221,6 @@ class ProcessTester(unittest.TestCase):
         ideal_gas_errors = []
         for i in range(num_tests):
             P, V, T, n, fluid = self.initial_state()
-            print(fluid)
             process = get_process(P=P,V=V,T=T,fluid=fluid)
             try: 
                 process.final(P = P*np.random.uniform(0,10))
@@ -274,7 +269,5 @@ class ProcessTester(unittest.TestCase):
         Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Adiabatic(P=P,V=V,T=T,fluid=fluid))
         print(self.standard_line("adiabatic",Error_ideal_gas_law))
 
-
 if __name__ == "__main__":
     unittest.main()
-    # why is there a point after each successfull test?
