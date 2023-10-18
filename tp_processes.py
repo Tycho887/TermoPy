@@ -16,7 +16,7 @@ K = 10000; allowed_error = 5e-2 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.1.3"
+version = "1.2.0"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -83,13 +83,13 @@ Cv: {self.Cv}
 Cp: {self.Cp}
 gamma: {self.gamma}"""
 class Dynamic(Static):
-    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
-        super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic)
+    def __init__(self,n,P,V,T,monatomic,diatomic,fluid):
+        super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic,name=fluid)
 
         self.static = False
         self.first_law = None
     
-    def _generate_extra_data(self,show):
+    def _generate_extra_data(self):
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
         assert self.n is not None, "Number of moles must be defined"
         assert self.Cv is not None, "Cv must be defined"
@@ -112,12 +112,11 @@ class Dynamic(Static):
         self.mean_free_time = self.mean_free_path/self.rms
         self.collision_rate = self.nv/self.mean_free_path
 class Isothermal(Dynamic):
-    def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
+    def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,fluid=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
         self.title = "Isotermisk prosess"
     
-    
-    def final(self,P=None,V=None,T=None,steps = K):
+    def final(self,P=None,V=None,steps = K):
         if P is not None:
             self.pressure = np.linspace(self.pressure[0],P,steps)            
             self.temperature = self.temperature[0]*np.ones(steps)
@@ -126,72 +125,57 @@ class Isothermal(Dynamic):
             self.volume = np.linspace(self.volume[0],V,steps)
             self.temperature = self.temperature[0]*np.ones(steps)
             self.pressure = self.n * R * self.temperature / self.volume
-        elif T is not None:
-            self.temperature = self.temperature[0]*np.ones(steps)
-            self.volume = self.volume[0]*np.ones(steps)
-            self.pressure = self.pressure[0]*np.ones(steps)
         else:
-            raise ValueError("P, V or T must be defined")
+            raise ValueError("P or V must be defined")
 
-        self.heat = R*self.n*self.temperature[0]*np.log(self.volume[-1]/self.volume[0])
+        self.heat = R*self.n*self.temperature[0]*np.log(self.volume/self.volume[0])
 
-        self._generate_extra_data(False)                  
+        self._generate_extra_data()                  
 class Isobaric(Dynamic):
-    def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
+    def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False,fluid=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
         self.title = "Isobar prosess"
     
     
-    def final(self,P=None,V=None,T=None,steps = K):
-        if P is not None:
-            self.pressure = self.pressure[0]*np.ones(steps)
-            self.volume = self.volume[0]*np.ones(steps)
-            self.temperature = self.temperature[0]*np.ones(steps)
-            self.static = True
-        elif V is not None:
+    def final(self,V=None,T=None,steps = K):
+        if V is not None:
             self.volume = np.linspace(self.volume[0],V,steps)
             self.pressure = self.pressure[0]*np.ones(steps)
             self.temperature = self.pressure*self.volume/(self.n*R)
-            self.static = False
         elif T is not None:
             self.temperature = np.linspace(self.temperature[0],T,steps)
             self.pressure = self.pressure[0]*np.ones(steps)
             self.volume = self.n*R*self.temperature/self.pressure
-            self.static = False
         else:
-            raise ValueError("P, V or T must be defined")
+            raise ValueError("V or T must be defined")
         
-        self.heat = self.n*self.Cp*(self.temperature[-1]-self.temperature[0])
+        self.heat = self.n*self.Cp*(self.temperature-self.temperature[0])
         
-        self._generate_extra_data(False)
+        self._generate_extra_data()
 class Isochoric(Dynamic):
-    def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
+    def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False,fluid=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
         self.title = "Isokor prosess"
     
-    
-    def final(self,P=None,V=None,T=None,steps = K):
+
+    def final(self,P=None,T=None,steps = K):
         if P is not None:
             self.pressure = np.linspace(self.pressure[0],P,steps)
             self.volume = self.volume[0]*np.ones(steps)
             self.temperature = self.pressure * self.volume / (self.n * R)
-        elif V is not None:
-            self.volume = self.volume[0]*np.ones(steps)
-            self.pressure = self.pressure[0]*np.ones(steps)
-            self.temperature = self.temperature[0]*np.ones(steps)
         elif T is not None:
             self.temperature = np.linspace(self.temperature[0],T,steps)
             self.volume = self.volume[0]*np.ones(steps)
             self.pressure = self.n*R*self.temperature/self.volume
         else:
-            raise ValueError("P, V or T must be defined")
+            raise ValueError("P or T must be defined")
         
-        self.heat = self.n*self.Cv*(self.temperature[-1]-self.temperature[0])
+        self.heat = self.n*self.Cv*(self.temperature-self.temperature[0])
 
-        self._generate_extra_data(False)
+        self._generate_extra_data()
 class Adiabatic(Dynamic):
-    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic)
+    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False,fluid=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
         self.title = "Adiabatisk prosess"
 
 
@@ -213,7 +197,7 @@ class Adiabatic(Dynamic):
         
         self.heat = 0
 
-        self._generate_extra_data(False)
+        self._generate_extra_data()
 
 num_tests = 100
 class ProcessTester(unittest.TestCase):
@@ -223,8 +207,9 @@ class ProcessTester(unittest.TestCase):
         V = np.random.uniform(1e-4,10)
         T = np.random.uniform(10,1000)
         n = P*V/(R*T)
-        monatomic = np.random.choice([True,False]) # FIKS DETTE
-        return P,V,T,n,monatomic
+        #monatomic = np.random.choice([True,False])
+        fluid = np.random.choice(list(substances.keys()))
+        return P,V,T,n,fluid
 
     def standard_line(self,type, ideal_gas_errors):
         return f"\n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
@@ -233,56 +218,63 @@ class ProcessTester(unittest.TestCase):
         return f"\n{'-'*int((len(text)-1)/2)}{text}{'-'*int((len(text)-1)/2)}"
     
     def assertions(self,process):
-        self.assertTrue(process.is_ideal_gas,f"P: {process.pressure[-1]}, V: {process.volume[-1]}, T: {process.temperature[-1]}, n: {process.n}")
+        self.assertTrue(process.is_ideal_gas,f"Process is not ideal gas: {process.name}, {process}")
     
     
     def process_loop_methods(self,get_process):
         ideal_gas_errors = []
         for i in range(num_tests):
-            P, V, T, n, mono = self.initial_state()
-            # we want to choose a random number between 0 and 100)
-            process = get_process(P=P,V=V,T=T,monatomic=mono)
-            process.final(P = P*np.random.uniform(0,10))
-            self.assertions(process)
+            P, V, T, n, fluid = self.initial_state()
+            print(fluid)
+            process = get_process(P=P,V=V,T=T,fluid=fluid)
+            try: 
+                process.final(P = P*np.random.uniform(0,10))
+                self.assertions(process)
 
-            process.final(P = P/np.random.uniform(0,10))
-            self.assertions(process)
+                process.final(P = P/np.random.uniform(0,10))
+                self.assertions(process)
+            except TypeError:
+                pass
+            try:
+                process.final(V = V*np.random.uniform(0,10))
+                self.assertions(process)
 
-            process.final(V = V*np.random.uniform(0,10))
-            self.assertions(process)
+                process.final(V = V/np.random.uniform(0,10))
+                self.assertions(process)
+            except TypeError:
+                pass
+            try:
+                process.final(T = T*np.random.uniform(0,10))
+                self.assertions(process)
 
-            process.final(V = V/np.random.uniform(0,10))
-            self.assertions(process)
-
-            process.final(T = T*np.random.uniform(0,10))
-            self.assertions(process)
-
-            process.final(T = T/np.random.uniform(0,10))
-            self.assertions(process)
-
+                process.final(T = T/np.random.uniform(0,10))
+                self.assertions(process)
+            except TypeError:
+                pass
             ideal_gas_errors.append(np.max(process.ideal_gas_law))
         return ideal_gas_errors
 
     def test_Isothermal(self):
         print(self.header("Running isothermal test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isothermal(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isothermal(P=P,V=V,T=T,fluid=fluid))
         print(self.standard_line("isothermal",Error_ideal_gas_law))
 
     def test_Isobaric(self):
         print(self.header("Running isobaric test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isobaric(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isobaric(P=P,V=V,T=T,fluid=fluid))
         print(self.standard_line("isobaric",Error_ideal_gas_law))
 
     def test_Isochoric(self):
         print(self.header("Running isochoric test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Isochoric(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isochoric(P=P,V=V,T=T,fluid=fluid))
         print(self.standard_line("isochoric",Error_ideal_gas_law))
 
     def test_Adiabatic(self):
         print(self.header("Running adiabatic test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,monatomic: Adiabatic(P=P,V=V,T=T,monatomic=monatomic,diatomic=not monatomic))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Adiabatic(P=P,V=V,T=T,fluid=fluid))
         print(self.standard_line("adiabatic",Error_ideal_gas_law))
 
 
 if __name__ == "__main__":
     unittest.main()
+    # why is there a point after each successfull test?
