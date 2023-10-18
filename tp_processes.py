@@ -16,7 +16,7 @@ allowed_error = 1e-6 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.6"
+version = "1.2.7"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
@@ -82,14 +82,14 @@ class Static:
     
     def __str__(self):
         return f"""Gas: {self.name} [{self.formula}] 
-temperature: {self.temperature[-1]}
-pressure: {self.pressure[-1]}
-volume: {self.volume[-1]}
-number of moles: {self.n}
-Molar mass: {self.M}
-Cv: {self.Cv}
-Cp: {self.Cp}
-gamma: {self.gamma}"""
+temperature: {self.temperature[-1]:.3f} K
+pressure: {self.pressure[-1]:.3e} Pa
+volume: {self.volume[-1]*1000:.3f} L
+number of moles: {self.n:.3f} mol
+Molar mass: {self.M*1000:.3f} g/mol
+Cv: {self.Cv:.3f} J/molK
+Cp: {self.Cp:.3f} J/molK
+gamma: {self.gamma:.4f}"""
 class Dynamic(Static):
     def __init__(self,n,P,V,T,monatomic,diatomic,gas):
         super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic,gas=gas)
