@@ -9,45 +9,45 @@ L = 0.001
 R = 8.314
 k = 1.38064852e-23 # Boltzmanns konstant
 K = 10000
-allowed_error = 5e-2 # number of steps and allowed error
+allowed_error = 1e-6 # number of steps and allowed error
 
 # Data
 
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.2"
+version = "1.2.5"
 
 class Static:
-    def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
+    def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
         
         if monatomic:
-            self.fluid = {"M": 4.002602, "Cv": 3/2 * R, "Cp": 5/2 * R, "gamma": 5/3, "formula": "He"}
+            self.gas = {"M": 4.002602, "Cv": 3/2 * R, "Cp": 5/2 * R, "gamma": 5/3, "formula": "He"}
             self.name = "Helium"
         elif diatomic:
-            self.fluid = {"M": 28.0134, "Cv": 5/2 * R, "Cp": 7/2 * R, "gamma": 7/5, "formula": "N2"}
+            self.gas = {"M": 28.0134, "Cv": 5/2 * R, "Cp": 7/2 * R, "gamma": 7/5, "formula": "N2"}
             self.name = "Nitrogen"
         # gas is a dict, so we need to check if it is in the database
-        elif name in substances.keys():
-            self.fluid = substances[name]
-            self.name = name
+        elif gas in substances.keys():
+            self.gas = substances[gas]
+            self.name = gas
         # in case the user inputs a formula instead of a name
-        elif name in [substances[i]["formula"] for i in substances]:
-            self.fluid = substances[[i for i in substances if substances[i]["formula"]==name][0]]
-            self.name = [i for i in substances if substances[i]["formula"]==name][0]
-        elif name == None and not monatomic and not diatomic:
-            self.fluid = substances["Air"]
+        elif gas in [substances[i]["formula"] for i in substances]:
+            self.gas = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.name = [i for i in substances if substances[i]["formula"]==gas][0]
+        elif gas == None and not monatomic and not diatomic:
+            self.gas = substances["Air"]
             self.name = "Air"
         else:
             raise ValueError("The gas you entered is not in the database")
         
-        assert diatomic or monatomic or self.fluid != None
+        assert diatomic or monatomic or self.gas != None
 
-        self.M = self.fluid["M"]
-        self.Cv = self.fluid["Cv"]
-        self.Cp = self.fluid["Cp"]
-        self.gamma = self.fluid["gamma"]
-        self.formula = self.fluid["formula"]
+        self.M = self.gas["M"]
+        self.Cv = self.gas["Cv"]
+        self.Cp = self.gas["Cp"]
+        self.gamma = self.gas["gamma"]
+        self.formula = self.gas["formula"]
         self.diameter = 3e-10 # 3 angstrom by default
         self.atomic_mass = self.M/6.022e23
         
@@ -71,6 +71,12 @@ class Static:
             self.pressure = np.array([P])
             self.volume = np.array([V])
             self.temperature = np.array([T])
+        elif P != None and V != None and T != None and n != None:
+            assert P * V - n * R * T < allowed_error, "The variables you entered are not consistent with the ideal gas law"
+            self.pressure = np.array([P])
+            self.volume = np.array([V])
+            self.temperature = np.array([T])
+            self.n = n
         else:
             raise ValueError("You must define three of the variables P, V, T and n")
     
@@ -85,8 +91,8 @@ Cv: {self.Cv}
 Cp: {self.Cp}
 gamma: {self.gamma}"""
 class Dynamic(Static):
-    def __init__(self,n,P,V,T,monatomic,diatomic,fluid):
-        super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic,name=fluid)
+    def __init__(self,n,P,V,T,monatomic,diatomic,gas):
+        super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic,gas=gas)
 
         self.static = False
         self.first_law = None
@@ -114,8 +120,8 @@ class Dynamic(Static):
         self.collision_rate = self.nv/self.mean_free_path
 
 class Isothermal(Dynamic):
-    def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,fluid=None):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
+    def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isotermisk prosess"
     
     def final(self,P=None,V=None,steps = K):
@@ -134,8 +140,8 @@ class Isothermal(Dynamic):
 
         self._generate_extra_data()                  
 class Isobaric(Dynamic):
-    def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False,fluid=None):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
+    def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isobar prosess"
     
     
@@ -155,8 +161,8 @@ class Isobaric(Dynamic):
         
         self._generate_extra_data()
 class Isochoric(Dynamic):
-    def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False,fluid=None):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
+    def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Isokor prosess"
     
 
@@ -176,8 +182,8 @@ class Isochoric(Dynamic):
 
         self._generate_extra_data()
 class Adiabatic(Dynamic):
-    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False,fluid=None):
-        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
+    def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False,gas=None):
+        super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
         self.title = "Adiabatisk prosess"
 
 
@@ -213,7 +219,7 @@ class ProcessTester(unittest.TestCase):
         fluid = np.random.choice(list(substances.keys()))
         return P,V,T,n,fluid
 
-    def standard_line(self,type, ideal_gas_errors):
+    def standard_line(self, ideal_gas_errors):
         return f"\n\tIdeal gas law inconsistency: {np.max(ideal_gas_errors)}"
 
     def header(self,text):
@@ -226,8 +232,8 @@ class ProcessTester(unittest.TestCase):
     def process_loop_methods(self,get_process):
         ideal_gas_errors = []
         for i in range(num_tests):
-            P, V, T, n, fluid = self.initial_state()
-            process = get_process(P=P,V=V,T=T,fluid=fluid)
+            P, V, T, n, gas = self.initial_state()
+            process = get_process(P=P,V=V,T=T,gas=gas)
             try: 
                 process.final(P = P*np.random.uniform(0,10))
                 self.assertions(process)
@@ -257,23 +263,23 @@ class ProcessTester(unittest.TestCase):
 
     def test_Isothermal(self):
         print(self.header("Running isothermal test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isothermal(P=P,V=V,T=T,fluid=fluid))
-        print(self.standard_line("isothermal",Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,gas: Isothermal(P=P,V=V,T=T,gas=gas))
+        print(self.standard_line(Error_ideal_gas_law))
 
     def test_Isobaric(self):
         print(self.header("Running isobaric test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isobaric(P=P,V=V,T=T,fluid=fluid))
-        print(self.standard_line("isobaric",Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,gas: Isobaric(P=P,V=V,T=T,gas=gas))
+        print(self.standard_line(Error_ideal_gas_law))
 
     def test_Isochoric(self):
         print(self.header("Running isochoric test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Isochoric(P=P,V=V,T=T,fluid=fluid))
-        print(self.standard_line("isochoric",Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,gas: Isochoric(P=P,V=V,T=T,gas=gas))
+        print(self.standard_line(Error_ideal_gas_law))
 
     def test_Adiabatic(self):
         print(self.header("Running adiabatic test"))
-        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,fluid: Adiabatic(P=P,V=V,T=T,fluid=fluid))
-        print(self.standard_line("adiabatic",Error_ideal_gas_law))
+        Error_ideal_gas_law = self.process_loop_methods(lambda P,V,T,gas: Adiabatic(P=P,V=V,T=T,gas=gas))
+        print(self.standard_line(Error_ideal_gas_law))
 
 if __name__ == "__main__":
     unittest.main()
