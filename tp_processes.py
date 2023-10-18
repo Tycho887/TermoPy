@@ -4,15 +4,19 @@ import unittest
 
 # Constants
 
-atm = 101300; L = 0.001; R = 8.314; k = 1.38064852e-23 # Boltzmanns konstant
-K = 10000; allowed_error = 5e-2 # number of steps and allowed error
+atm = 101300
+L = 0.001
+R = 8.314
+k = 1.38064852e-23 # Boltzmanns konstant
+K = 10000
+allowed_error = 5e-2 # number of steps and allowed error
 
 # Data
 
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.1"
+version = "1.2.2"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -44,6 +48,8 @@ class Static:
         self.Cp = self.fluid["Cp"]
         self.gamma = self.fluid["gamma"]
         self.formula = self.fluid["formula"]
+        self.diameter = 3e-10 # 3 angstrom by default
+        self.atomic_mass = self.M/6.022e23
         
         if P == None:
             self.pressure = np.array([n * R * T / V])
@@ -101,12 +107,12 @@ class Dynamic(Static):
         self.is_ideal_gas = np.max(self.ideal_gas_law) < allowed_error
 
         self.rms = np.sqrt(3*self.temperature*R/self.M)
-        self.diameter = 3e-10 # 3 angstrom by default
+
         self.nv = self.n*6.022e23/self.volume
-        self.atomic_mass = self.M/6.022e23
         self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
         self.mean_free_time = self.mean_free_path/self.rms
         self.collision_rate = self.nv/self.mean_free_path
+
 class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,fluid=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,fluid=fluid)
