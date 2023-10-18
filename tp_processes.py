@@ -16,38 +16,38 @@ allowed_error = 1e-6 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.5"
+version = "1.2.6"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
         
         if monatomic:
-            self.gas = {"M": 4.002602, "Cv": 3/2 * R, "Cp": 5/2 * R, "gamma": 5/3, "formula": "He"}
+            self.properties = {"M": 4.002602, "Cv": 3/2 * R, "Cp": 5/2 * R, "gamma": 5/3, "formula": "He"}
             self.name = "Helium"
         elif diatomic:
-            self.gas = {"M": 28.0134, "Cv": 5/2 * R, "Cp": 7/2 * R, "gamma": 7/5, "formula": "N2"}
+            self.properties = {"M": 28.0134, "Cv": 5/2 * R, "Cp": 7/2 * R, "gamma": 7/5, "formula": "N2"}
             self.name = "Nitrogen"
         # gas is a dict, so we need to check if it is in the database
         elif gas in substances.keys():
-            self.gas = substances[gas]
+            self.properties = substances[gas]
             self.name = gas
         # in case the user inputs a formula instead of a name
         elif gas in [substances[i]["formula"] for i in substances]:
-            self.gas = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
+            self.properties = substances[[i for i in substances if substances[i]["formula"]==gas][0]]
             self.name = [i for i in substances if substances[i]["formula"]==gas][0]
         elif gas == None and not monatomic and not diatomic:
-            self.gas = substances["Air"]
+            self.properties = substances["Air"]
             self.name = "Air"
         else:
             raise ValueError("The gas you entered is not in the database")
         
-        assert diatomic or monatomic or self.gas != None
+        assert diatomic or monatomic or self.properties != None
 
-        self.M = self.gas["M"]
-        self.Cv = self.gas["Cv"]
-        self.Cp = self.gas["Cp"]
-        self.gamma = self.gas["gamma"]
-        self.formula = self.gas["formula"]
+        self.M = self.properties["M"]
+        self.Cv = self.properties["Cv"]
+        self.Cp = self.properties["Cp"]
+        self.gamma = self.properties["gamma"]
+        self.formula = self.properties["formula"]
         self.diameter = 3e-10 # 3 angstrom by default
         self.atomic_mass = self.M/6.022e23
         
