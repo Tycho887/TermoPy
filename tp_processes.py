@@ -16,7 +16,7 @@ K = 10000; allowed_error = 5e-2 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.1.0"
+version = "1.1.2"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,name=None):
@@ -102,8 +102,7 @@ class Dynamic(Static):
         self.dE = self.internal_energy[-1]-self.internal_energy[0]
         self.dU = self.heat - self.work
 
-        self.ideal_gas_law = np.mean((self.pressure*self.volume)/(self.n*R*self.temperature))
-
+        self.ideal_gas_law = np.mean((self.pressure*self.volume)/(self.n*R*self.temperature))-1
 
         if self.static:
             self.first_law = 0
@@ -111,7 +110,7 @@ class Dynamic(Static):
         else:
             self.first_law = ( (self.dE) - (self.heat - self.work)) / np.max([abs(self.dE),abs(self.heat),abs(self.work)])
 
-        self.is_ideal_gas = abs(self.ideal_gas_law - 1) < allowed_error
+        self.is_ideal_gas = abs(self.ideal_gas_law) < allowed_error
         self.follows_first_law = abs(self.first_law) < allowed_error
 
         self.rms = np.sqrt(3*self.temperature*R/self.M)
@@ -230,7 +229,7 @@ class Adiabatic(Dynamic):
 
         self._generate_extra_data(False)
 
-num_tests = 10
+num_tests = 100
 class ProcessTester(unittest.TestCase):
 
     def initial_state(self):
