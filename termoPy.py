@@ -6,8 +6,8 @@ import unittest
 
 version = '1.0.0'
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
 class Fluid(tpp.Static):
     def __init__(self,P=None,V=None,T=None,n=None,gas=None,monatomic=False,diatomic=False):
         super().__init__(P=P,V=V,T=T,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
@@ -196,6 +196,6 @@ O2.isobaric(V=1e-3)
 
 cycle1 = Carnot(T_hot=400,T_cold=300,compression_ratio=2,P=1e5,V=1e-3,gas='Krypton')
 
-plot(cycle1,display="PVT")
+plot(cycle1,display="P")
 
 show()
