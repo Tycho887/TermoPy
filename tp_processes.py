@@ -16,7 +16,7 @@ allowed_error = 1e-6 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.8"
+version = "1.3.0"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
@@ -42,6 +42,9 @@ class Static:
             raise ValueError("The gas you entered is not in the database")
         
         assert diatomic or monatomic or self.properties != None
+
+        self.monatomic = monatomic
+        self.diatomic = diatomic
 
         self.M = self.properties["M"]
         self.Cv = self.properties["Cv"]
@@ -215,7 +218,7 @@ class Adiabatic(Dynamic):
         else:
             raise ValueError("P, V or T must be defined")
         
-        self.heat = 0
+        self.heat = np.zeros(steps)
 
         self._generate_extra_data()
 
