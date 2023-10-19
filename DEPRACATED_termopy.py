@@ -660,14 +660,3 @@ class Otto(BaseCycle):
         self.processes.append(isochoric_heat_rejection)
 
         return self.processes
-
-class Brayton(BaseCycle):
-    pass
-class Stirling(BaseCycle):
-    pass
-class Ericsson(BaseCycle):
-    pass
-class Rankine(BaseCycle):
-    pass
-class Kalina(BaseCycle):
-    pass
