@@ -16,7 +16,7 @@ allowed_error = 1e-6 # number of steps and allowed error
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.2.7"
+version = "1.2.8"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
@@ -105,6 +105,7 @@ class Dynamic(Static):
         self.work = np.trapz(self.pressure,self.volume)
         self.internal_energy = self.Cv*self.n*self.temperature
         self.entropy = self.n*R*np.log(self.volume)+self.Cv*np.log(self.temperature)
+        self.time = np.linspace(0,1,K)
 
         self.dS = self.entropy[-1]-self.entropy[0]
         self.dE = self.heat - self.work
@@ -118,11 +119,22 @@ class Dynamic(Static):
         self.mean_free_path = 1/(np.sqrt(2)*np.pi*self.diameter**2*self.nv)
         self.mean_free_time = self.mean_free_path/self.rms
         self.collision_rate = self.nv/self.mean_free_path
+    
+        if self.title == "isochoric":
+            if self.temperature[-1] > self.temperature[0]:
+                self.title += " heating"
+            else:
+                self.title += " cooling"
+        else:
+            if self.volume[-1] > self.volume[0]:
+                self.title += " expansion"
+            else:
+                self.title += " compression"
 
 class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
-        self.title = "Isotermisk prosess"
+        self.title = "Isothermal"
     
     def final(self,P=None,V=None,steps = K):
         if P is not None:
@@ -142,7 +154,7 @@ class Isothermal(Dynamic):
 class Isobaric(Dynamic):
     def __init__(self,n=None,P=None,T=None,V=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
-        self.title = "Isobar prosess"
+        self.title = "Isobaric"
     
     
     def final(self,V=None,T=None,steps = K):
@@ -163,7 +175,7 @@ class Isobaric(Dynamic):
 class Isochoric(Dynamic):
     def __init__(self,n=None,V=None,T=None,P=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
-        self.title = "Isokor prosess"
+        self.title = "Isochoric"
     
 
     def final(self,P=None,T=None,steps = K):
@@ -184,7 +196,7 @@ class Isochoric(Dynamic):
 class Adiabatic(Dynamic):
     def __init__(self,n=None,P=None,V=None,T=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)
-        self.title = "Adiabatisk prosess"
+        self.title = "Adiabatic"
 
 
     def final(self,P=None,V=None,T=None, steps = K):
