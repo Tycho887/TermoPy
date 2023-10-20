@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 import tp_processes as tpp
+import termopy as tp
 
 version = '0.9.0'
 

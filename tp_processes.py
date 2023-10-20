@@ -8,15 +8,15 @@ atm = 101300
 L = 0.001
 R = 8.314
 k = 1.38064852e-23 # Boltzmanns konstant
-K = 10000
-allowed_error = 1e-6 # number of steps and allowed error
+K = 10000 # Number of steps in the process
+allowed_error = 1e-6
 
 # Data
 
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.3.0"
+version = "1.3.1"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
@@ -123,7 +123,7 @@ class Dynamic(Static):
         self.mean_free_time = self.mean_free_path/self.rms
         self.collision_rate = self.nv/self.mean_free_path
     
-        if self.title == "isochoric":
+        if self.title == "Isochoric":
             if self.temperature[-1] > self.temperature[0]:
                 self.title += " heating"
             else:
@@ -133,7 +133,6 @@ class Dynamic(Static):
                 self.title += " expansion"
             else:
                 self.title += " compression"
-
 class Isothermal(Dynamic):
     def __init__(self,n=None,T=None,V=None,P=None,monatomic=False,diatomic=False,gas=None):
         super().__init__(n,P=P,V=V,T=T,monatomic=monatomic,diatomic=diatomic,gas=gas)

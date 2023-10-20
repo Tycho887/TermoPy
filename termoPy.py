@@ -1,13 +1,10 @@
 import tp_processes as tpp
-import tp_cycles as tpc
 import matplotlib.pyplot as plt
 import numpy as np
 import unittest
 
-version = '1.0.0'
+version = '1.1.0'
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
 class Fluid(tpp.Static):
     def __init__(self,P=None,V=None,T=None,n=None,gas=None,monatomic=False,diatomic=False):
         super().__init__(P=P,V=V,T=T,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
@@ -32,7 +29,6 @@ class Fluid(tpp.Static):
             self.heat_added += process.heat
         else:
             self.heat_removed += process.heat
-
 
     def isothermal(self, P=None, V=None,time=1):
 
@@ -79,11 +75,41 @@ class Fluid(tpp.Static):
         process.final(P=P,V=V,T=T)
         self.__update__(process,time)
 
-class Carnot(tpc.cycle_base):
+class __cycle_base__(Fluid):
     def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+        super().__init__(P=P,V=V,T=T_hot,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
+        # we assume that the cycle starts at the hot temperature
+        self.T_hot = T_hot
+        self.T_cold = T_cold
+        self.compression_ratio = compression_ratio
+        self.gas = self.name
+
+    def get_efficiency(self):
+        heat_in = []; heat_out = []
+        for process in self.processes:
+            heat = process.heat[-1]
+            if heat > 0:
+                heat_in.append(heat)
+                self.heat_added += heat
+            elif heat < 0:
+                heat_out.append(heat)
+                self.heat_removed += heat
+            self.work.append(process.work)
+            self.entropy.append(process.dS)
+    
+        self.work = sum(self.work)
+        self.heat = sum(heat_in+heat_out)
+        self.entropy = sum(self.entropy)
+        self.efficiency = abs(self.work/sum(heat_in))
+        self.COP = heat_in/abs(self.work)
+
+        assert 0 <= self.efficiency <= 1, 'Efficiency is not between 0 and 1'
+
+class Carnot(__cycle_base__):
+    def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+        """Otto cycle with compression ratio, compression ratio must be greater than 1, volume is starting volume"""
         super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
-        self.name = "Carnot"
-        self.processes = []
+        self.title = "Carnot"
         
         self.alpha = self.compression_ratio * (self.T_cold/self.T_hot)**(1/(self.gamma-1))
         self.beta  = 1 / self.compression_ratio * (self.T_hot/self.T_cold)**(1/(self.gamma-1))
@@ -95,107 +121,115 @@ class Carnot(tpc.cycle_base):
         self.get_efficiency()
 
     def __carnot_cycle__(self):
-        isothermal_expansion = tpp.Isothermal(n=self.n,
-                                          V=self.volume[-1],
-                                          T=self.T_hot,
-                                          diatomic=self.diatomic,
-                                          monatomic=self.monatomic,
-                                          gas=self.gas)
-        isothermal_expansion.final(V=self.alpha*self.volume[-1])
-        self.processes.append(isothermal_expansion)
+        self.isothermal(V=self.alpha*self.volume[-1],time=1)
+        self.adiabatic(T=self.T_cold,time=1)
+        self.isothermal(V=self.beta*self.volume[-1],time=1)
+        self.adiabatic(T=self.T_hot,time=1)
 
-        adiabatic_expansion = tpp.Adiabatic(n=self.n,
-                                          V=isothermal_expansion.volume[-1],
-                                          T=isothermal_expansion.temperature[-1],
-                                          diatomic=self.diatomic,
-                                          monatomic=self.monatomic,
-                                          gas=self.gas)
-        adiabatic_expansion.final(T=self.T_cold)
-        self.processes.append(adiabatic_expansion)
+class Stirling(__cycle_base__):
+    def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+        """Stirling cycle with compression ratio, compression ratio must be greater than 1, volume is starting volume"""
+        super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V/compression_ratio,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
+        self.title = "Stirling"
+        self.__stirling_cycle__()
+        self.get_efficiency()
 
-        # by the definition of the compression ratio, V3 should be equal to V1*R (where R is the compression ratio)
-        V3 = adiabatic_expansion.volume[-1]
-        assert abs(V3-self.volume[-1]*self.compression_ratio) < tpp.allowed_error, f"Something went wrong, V3 = {V3}, V1 = {self.volume[-1]}, beta = {self.beta}"
+    def __stirling_cycle__(self):
+        self.isothermal(V=self.compression_ratio*self.volume[-1],time=1)
+        self.isochoric(T=self.T_cold,time=1)
+        self.isothermal(V=self.volume[-1]/self.compression_ratio,time=1)
+        self.isochoric(T=self.T_hot,time=1)
 
-        isothermal_compression = tpp.Isothermal(n=self.n,
-                                                V=adiabatic_expansion.volume[-1],
-                                                T=self.T_cold,
-                                                diatomic=self.diatomic,
-                                                monatomic=self.monatomic,
-                                                gas=self.gas)
-        isothermal_compression.final(V=self.beta*V3)
-        self.processes.append(isothermal_compression)
+class Otto(__cycle_base__):
+    def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+        """Otto cycle with compression ratio, compression ratio must be greater than 1, volume is starting volume"""
+        super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V/compression_ratio,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
+        self.title = "Otto"
+        self.__otto_cycle__()
+        self.get_efficiency()
+    def __otto_cycle__(self):
+        self.isochoric(T=self.T_cold,time=1)
+        self.isothermal(V=self.compression_ratio*self.volume[-1],time=1)
+        self.isochoric(T=self.T_hot,time=1)
+        self.isothermal(V=self.volume[-1]/self.compression_ratio,time=1)
 
-        adiabatic_compression = tpp.Adiabatic(n=self.n,
-                                          V=isothermal_compression.volume[-1],
-                                          T=isothermal_compression.temperature[-1],
-                                          diatomic=self.diatomic,
-                                          monatomic=self.monatomic,
-                                          gas=self.gas)
-        adiabatic_compression.final(T=self.T_hot)
-        self.processes.append(adiabatic_compression)
+
+def __plot_3d__(cycle,display):
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')   
+    axes = {"P":"Gas pressure [Pa]","V":"Piston volume [L]","T":"Gas temperature [K]","S":"Entropy of system [J/K]"}
+    display_axes = []
+
+    for process in cycle.processes:
+        display_values = []
+        data = {"P":process.pressure,"V":process.volume*1000,"T":process.temperature,"S":process.entropy}
+        
+        for char in display:
+            if char not in "PVTS": raise ValueError("Invalid display value")
+            display_values.append(data[char])
+            display_axes.append(axes[char])
+        
+        ax.plot(display_values[0],display_values[1],display_values[2],label=process.title)
+        ax.scatter(display_values[0][-1],display_values[1][-1],display_values[2][-1],label=process.title + " final state")
+    
+    ax.set_xlabel(display_axes[0])
+    ax.set_ylabel(display_axes[1])
+    ax.set_zlabel(display_axes[2])
 
 def plot(cycle,display="PV"):
-        axes = {"P":"Pressure [Pa]","V":"Volume [m^3]","T":"Temperature [K]","S":"Entropy [J/K]"}
+
+        axes = {"P":"Gas pressure [Pa]","V":"Piston volume [L]","T":"Gas temperature [K]","S":"Entropy of system [J/K]"}
         display_axes = []
-        # we want to reverse the order of "display"
+
         for process in cycle.processes:
             display_values = []
-            data = {"P":process.pressure,"V":process.volume,"T":process.temperature,"S":process.entropy}
+            data = {"P":process.pressure,"V":process.volume*1000,"T":process.temperature,"S":process.entropy}
+
             for char in display:
                 if char not in "PVTS": raise ValueError("Invalid display value")
                 display_values.append(data[char])
                 display_axes.append(axes[char])
-            if len(display_values)==1:
+
+            if len(display_values)==1: 
                 plt.plot(process.time,display_values[0],label=process.title)
-                # we want to add the axis name "Time [s]" to the beginning of the list
-                display_axes.insert(0,"Time [s]")
+
             elif len(display_values)==2:
                 plt.plot(display_values[0],display_values[1],label=process.title)
                 plt.scatter(display_values[0][-1],display_values[1][-1],label=process.title + " final state")
-            elif len(display_values)==3:
-                ax.plot(display_values[0],display_values[1],display_values[2],label=process.title)
-                ax.scatter(display_values[0][-1],display_values[1][-1],display_values[2][-1],label=process.title + " final state")
-            else:
-                raise ValueError("Invalid display value")
+                # we want to add a piece of text that displays the pressure and volume at the end of the process
+                # plt.text(display_values[0][-1],display_values[1][-1],f"P: {display_values[1][-1]:.2f} Pa\nV: {display_values[0][-1]:.2f} L",transform=plt.gca().transData)
+                # # we want to avoid the text overlapping other data, so we move it to the right if it is too close to the left
+                # if display_values[0][-1] < 0.5*max(display_values[0]): plt.text(display_values[0][-1]+0.1*max(display_values[0]),display_values[1][-1],
+                #                                                                 f"P: {display_values[1][-1]:.2f} Pa\nV: {display_values[0][-1]:.2f} L",
+                #                                                                 transform=plt.gca().transData)
+            
+            elif len(display_values)==3: pass
+
+            else: raise ValueError("Invalid display value")
             
         display_values.reverse()
 
-        if len(display_values)==1 or len(display_values)==2:
+        if len(display_values)==1:
+            display_axes.insert(0,"Time [s]")
             plt.xlabel(display_axes[0])
             plt.ylabel(display_axes[1])
-            plt.text(2, 7, f'Work Done: {cycle.work} J')
-            plt.text(2, 8, f'Heat Added: {cycle.heat_added} J')
-            plt.text(2, 9, f'Heat Removed: {cycle.heat_removed} J')
+            # plt.text(0.5,0.5,f"Work done: {cycle.work:.2f} J\nHeat added: {cycle.heat_added:.2f} J\nHeat removed: {cycle.heat_removed:.2f} J\nEfficiency: {cycle.efficiency:.2f}",
+            #          transform=plt.gca())
+        elif len(display_values)==2:
+            plt.xlabel(display_axes[0])
+            plt.ylabel(display_axes[1])
+            # plt.text(0.5,0.5,f"Work done: {cycle.work:.2f} J\nHeat added: {cycle.heat_added:.2f} J\nHeat removed: {cycle.heat_removed:.2f} J\nEfficiency: {cycle.efficiency:.2f}",
+            #          transform=plt.gca().transAxes)
         elif len(display_values)==3:
-            print(display_axes)
-            ax.set_xlabel(display_axes[0])
-            ax.set_ylabel(display_axes[1])
-            ax.set_zlabel(display_axes[2])
-            ax.text(2, 7, 10, f'Work Done: {cycle.work} J')
-            ax.text(2, 8, 10, f'Heat Added: {cycle.heat_added} J')
-            ax.text(2, 9, 10, f'Heat Removed: {cycle.heat_removed} J')
+            __plot_3d__(cycle,display)
         else:
             raise ValueError("Invalid display value")
         
-        if isinstance(cycle,Fluid): plt.title(f"Working fluid: {cycle.name}")
-        else: plt.title(f"{cycle.name} cycle with {cycle.gas.lower()} working fluid")
-
-
+        if isinstance(cycle,__cycle_base__): plt.title(f"{cycle.title} cycle with {cycle.gas.lower()} working fluid")
+        elif isinstance(cycle,Fluid): plt.title(f"Working fluid: {cycle.name}")
 
 def show():
     plt.grid()
     plt.legend()
     plt.show()
-
-O2 = Fluid(P=1e5, V=1e-3, T=500, gas='O2')
-
-O2.isothermal(P=2e5)
-O2.adiabatic(T=600)
-O2.isobaric(V=1e-3)
-
-cycle1 = Carnot(T_hot=400,T_cold=300,compression_ratio=2,P=1e5,V=1e-3,gas='Krypton')
-
-plot(cycle1,display="P")
-
-show()
