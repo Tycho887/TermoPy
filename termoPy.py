@@ -2,8 +2,13 @@ import tp_processes as tpp
 import matplotlib.pyplot as plt
 import numpy as np
 import unittest
+import datetime
 
-version = '1.1.0'
+
+# we want to find the current date and time to use as a version number
+
+
+version = '1.1.1'
 
 class Fluid(tpp.Static):
     def __init__(self,P=None,V=None,T=None,n=None,gas=None,monatomic=False,diatomic=False):
@@ -106,9 +111,9 @@ class __cycle_base__(Fluid):
         assert 0 <= self.efficiency <= 1, 'Efficiency is not between 0 and 1'
 
 class Carnot(__cycle_base__):
-    def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+    def __init__(self,T_hot,T_cold,compression_ratio,V,P=None,n=None,gas=None,monatomic=False,diatomic=False):
         """Otto cycle with compression ratio, compression ratio must be greater than 1, volume is starting volume"""
-        super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
+        super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V/compression_ratio,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
         self.title = "Carnot"
         
         self.alpha = self.compression_ratio * (self.T_cold/self.T_hot)**(1/(self.gamma-1))
@@ -171,7 +176,7 @@ def __plot_3d__(cycle,display):
             display_axes.append(axes[char])
         
         ax.plot(display_values[0],display_values[1],display_values[2],label=process.title)
-        ax.scatter(display_values[0][-1],display_values[1][-1],display_values[2][-1],label=process.title + " final state")
+        ax.scatter(display_values[0][-1],display_values[1][-1],display_values[2][-1])
     
     ax.set_xlabel(display_axes[0])
     ax.set_ylabel(display_axes[1])
@@ -196,7 +201,7 @@ def plot(cycle,display="PV"):
 
             elif len(display_values)==2:
                 plt.plot(display_values[0],display_values[1],label=process.title)
-                plt.scatter(display_values[0][-1],display_values[1][-1],label=process.title + " final state")
+                plt.scatter(display_values[0][-1],display_values[1][-1])
                 # we want to add a piece of text that displays the pressure and volume at the end of the process
                 # plt.text(display_values[0][-1],display_values[1][-1],f"P: {display_values[1][-1]:.2f} Pa\nV: {display_values[0][-1]:.2f} L",transform=plt.gca().transData)
                 # # we want to avoid the text overlapping other data, so we move it to the right if it is too close to the left
@@ -229,7 +234,12 @@ def plot(cycle,display="PV"):
         if isinstance(cycle,__cycle_base__): plt.title(f"{cycle.title} cycle with {cycle.gas.lower()} working fluid")
         elif isinstance(cycle,Fluid): plt.title(f"Working fluid: {cycle.name}")
 
-def show():
+def show(save=False,name="",dpi=512):
     plt.grid()
     plt.legend()
+    if save: 
+        now = datetime.datetime.now()
+        date = f"{now.day}-{now.month}-{now.year}"
+        if name == "": name = "plot"
+        plt.savefig(f"{date}_{name}.png",dpi=dpi)
     plt.show()
