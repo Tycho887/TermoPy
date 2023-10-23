@@ -8,7 +8,7 @@ import datetime
 # we want to find the current date and time to use as a version number
 
 
-version = '1.1.1'
+version = '1.1.2'
 
 class Fluid(tpp.Static):
     def __init__(self,P=None,V=None,T=None,n=None,gas=None,monatomic=False,diatomic=False):
@@ -106,7 +106,7 @@ class __cycle_base__(Fluid):
         self.heat = sum(heat_in+heat_out)
         self.entropy = sum(self.entropy)
         self.efficiency = abs(self.work/sum(heat_in))
-        self.COP = heat_in/abs(self.work)
+        self.COP = 1/self.efficiency
 
         assert 0 <= self.efficiency <= 1, 'Efficiency is not between 0 and 1'
 
