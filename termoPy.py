@@ -158,6 +158,19 @@ class Otto(__cycle_base__):
         self.isochoric(T=self.T_hot,time=1)
         self.isothermal(V=self.volume[-1]/self.compression_ratio,time=1)
 
+class Brayton(__cycle_base__):
+    def __init__(self,T_hot,T_cold,compression_ratio,P=None,V=None,n=None,gas=None,monatomic=False,diatomic=False):
+        """Brayton cycle with compression ratio, compression ratio must be greater than 1, volume is starting volume"""
+        super().__init__(T_hot,T_cold,compression_ratio,P=P,V=V/compression_ratio,n=n,gas=gas,monatomic=monatomic,diatomic=diatomic)
+        self.title = "Brayton"
+        self.__brayton_cycle__()
+        self.get_efficiency()
+    
+    def __brayton_cycle__(self):
+        self.adiabatic(V=self.compression_ratio*self.volume[-1],time=1)
+        self.isobaric(T=self.T_hot,time=1)
+        self.adiabatic(V=self.volume[-1]/self.compression_ratio,time=1)
+        self.isobaric(T=self.T_cold,time=1)
 
 def __plot_3d__(cycle,display):
 
