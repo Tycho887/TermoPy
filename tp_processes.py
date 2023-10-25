@@ -16,7 +16,7 @@ allowed_error = 1e-6
 with open("data/substances.JSON","r") as file:
     substances = json.load(file)
 
-version = "1.3.1"
+version = "1.3.2"
 
 class Static:
     def __init__(self,P=None,V=None,T=None,n=None,monatomic=False,diatomic=False,gas=None):
@@ -98,7 +98,6 @@ class Dynamic(Static):
         super().__init__(P=P,V=V,T=T,n=n,monatomic=monatomic,diatomic=diatomic,gas=gas)
 
         self.static = False
-        self.first_law = None
     
     def _generate_extra_data(self):
         assert self.volume is not None and self.pressure is not None and self.temperature is not None, "Volume, pressure and temperature must be defined"
