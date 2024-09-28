@@ -13,7 +13,7 @@ allowed_error = 1e-6
 
 # Data
 
-with open("data/substances.JSON","r") as file:
+with open("data/substances.json","r") as file:
     substances = json.load(file)
 
 version = "1.3.2"
